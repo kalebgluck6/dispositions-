@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <?!= include('Styles') ?>
+</head>
+<body>
+  <div class="boot" id="boot">
+    <div class="inner">
+      <div class="spinner lg"></div>
+      <div class="word">SameDay<span>Investments</span></div>
+      <div class="muted small" style="letter-spacing:3px;text-transform:uppercase">Deal Distribution</div>
+    </div>
+  </div>
+
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="mark">
+          <div class="monogram">SD</div>
+          <div>
+            <div class="word">SameDay<span>Investments</span></div>
+            <div class="sub">Deal Distribution</div>
+          </div>
+        </div>
+      </div>
+      <nav class="nav" id="nav"></nav>
+      <div class="foot" id="sidefoot"></div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <h1 id="page-title">Dashboard</h1>
+        <div class="spacer"></div>
+        <span class="quota" id="quota"></span>
+        <span id="mode-pill"></span>
+      </header>
+      <div class="content" id="view"></div>
+    </main>
+  </div>
+
+  <div id="modal-root"></div>
+  <div class="toasts" id="toasts"></div>
+
+  <?!= include('App') ?>
+</body>
+</html>

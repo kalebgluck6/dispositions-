@@ -1,0 +1,11 @@
+{
+  "name": "samedayinvestments-deal-distribution",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SameDayInvestments investor deal distribution system — Google Sheets + Apps Script",
+  "scripts": {
+    "test": "node tools/test.js",
+    "preview": "node tools/build-preview.js",
+    "push": "clasp push"
+  }
+}

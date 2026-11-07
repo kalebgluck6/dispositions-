@@ -1,0 +1,1016 @@
+<script>
+/* ============================================================
+   SameDayInvestments — Deal Distribution web app (client)
+   ============================================================ */
+(function () {
+'use strict';
+
+// ---------- helpers ----------
+const $ = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+const isNum = n => n !== '' && n != null && !isNaN(Number(n));
+const money = n => isNum(n) ? (Number(n) < 0 ? '-$' : '$') + Math.abs(Math.round(Number(n))).toLocaleString('en-US') : '—';
+const short$ = n => { if (!isNum(n)) return '—'; n = Number(n); if (Math.abs(n) >= 1e6) return '$' + (n / 1e6).toFixed(n % 1e6 ? 2 : 0) + 'M'; if (Math.abs(n) >= 1e3) return '$' + Math.round(n / 1e3) + 'K'; return '$' + n; };
+const fmtNum = n => isNum(n) ? Number(n).toLocaleString('en-US') : '—';
+const toDate = v => { if (!v) return null; const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})$/); const d = m ? new Date(+m[1], m[2] - 1, +m[3]) : new Date(v); return isNaN(d) ? null : d; };
+const fmtDate = v => { const d = toDate(v); return d ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'; };
+const fmtDT = v => { const d = toDate(v); return d ? d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'; };
+const ago = v => { const d = toDate(v); if (!d) return ''; const s = (Date.now() - d) / 1000; if (s < 60) return 'just now'; if (s < 3600) return Math.floor(s / 60) + 'm ago'; if (s < 86400) return Math.floor(s / 3600) + 'h ago'; if (s < 604800) return Math.floor(s / 86400) + 'd ago'; return fmtDate(v); };
+const list = v => Array.isArray(v) ? v : String(v || '').split(/[,;|\n]/).map(s => s.trim()).filter(Boolean);
+const lc = s => String(s || '').toLowerCase();
+const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+
+function api(fn, ...args) {
+  return new Promise((resolve, reject) => {
+    google.script.run
+      .withSuccessHandler(resolve)
+      .withFailureHandler(err => reject(err && err.message ? err : new Error(String(err))))[fn](...args);
+  });
+}
+
+function toast(msg, type) {
+  const el = document.createElement('div');
+  el.className = 'toast ' + (type || '');
+  el.innerHTML = msg;
+  $('#toasts').appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = '.3s'; setTimeout(() => el.remove(), 300); }, type === 'err' ? 7000 : 4000);
+}
+const fail = e => { console.error(e); toast(esc(e && e.message || e), 'err'); };
+
+// ---------- icons ----------
+const I = {
+  dash: '<path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/>',
+  deals: '<path d="M3 10.5 12 3l9 7.5V21a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1V10.5z"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+  upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>',
+  inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
+  send: '<path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/>',
+  log: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+  star: '<path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>',
+  edit: '<path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>',
+  eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+  refresh: '<path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
+  mail: '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><path d="m22 6-10 7L2 6"/>'
+};
+const icon = (n) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + I[n] + '</svg>';
+
+// ---------- state ----------
+const S = {
+  settings: null, investors: [], deals: [], dashboard: null,
+  view: 'dashboard', params: {},
+  dealFilter: 'All', dealSearch: '',
+  inv: { q: '', tier: '', category: '', status: 'Active', market: '' }, selected: new Set(),
+  form: null, pendingPhotos: [], photoPreviews: null,
+  tracking: null, trackTab: 'recipients', showTest: false,
+  responses: null, respFilter: { deal: '', type: '', followUp: '' },
+  jobs: null, imp: { url: '', tab: '' }
+};
+const L = () => S.settings.lists;
+
+const NAV = [
+  ['dashboard', 'Dashboard', 'dash'],
+  ['deals', 'Deals', 'deals'],
+  ['dealForm', 'Submit Deal', 'plus'],
+  ['investors', 'Investors', 'users'],
+  ['import', 'Import Investors', 'upload'],
+  ['responses', 'Responses', 'inbox'],
+  ['jobs', 'Distributions', 'log'],
+  ['settings', 'Settings', 'gear']
+];
+const TITLES = { dashboard: 'Dashboard', deals: 'Deals', dealForm: 'Submit a Deal', deal: 'Deal', investors: 'Investor Network', import: 'Import Investors', responses: 'Responses & Interested Buyers', jobs: 'Distribution History', settings: 'Settings' };
+
+function go(view, params) {
+  S.view = view; S.params = params || {};
+  if (view === 'dealForm') { S.form = null; S.pendingPhotos = []; S.photoPreviews = null; S.pendingVideo = null; }
+  if (view === 'deal') { S.tracking = null; S.trackTab = S.params.tab || 'recipients'; }
+  window.scrollTo(0, 0);
+  render();
+}
+
+function renderChrome() {
+  const newResp = (S.dashboard && S.dashboard.responses30d) || 0;
+  $('#nav').innerHTML = NAV.map(([v, label, ic]) => {
+    const active = S.view === v || (v === 'deals' && S.view === 'deal') || (v === 'dealForm' && S.view === 'dealForm' && !S.params.id) || (v === 'deals' && S.view === 'dealForm' && S.params.id);
+    const badge = v === 'investors' ? '<span class="badge">' + S.investors.filter(i => i.status === 'Active' && !i.optOut).length + '</span>' : '';
+    return '<a data-go="' + v + '" class="' + (active ? 'active' : '') + '">' + icon(ic) + esc(label) + badge + '</a>';
+  }).join('');
+  const st = S.settings;
+  $('#mode-pill').innerHTML = st.testMode
+    ? '<span class="mode-pill test" data-go="settings" title="All emails are redirected to ' + esc(st.values.TEST_EMAIL) + '"><span class="dot"></span>Test Mode</span>'
+    : '<span class="mode-pill live" data-go="settings" title="Emails go to real investors"><span class="dot"></span>Live</span>';
+  $('#quota').textContent = st.quota >= 0 ? st.quota.toLocaleString() + ' emails left today' : '';
+  $('#sidefoot').innerHTML = esc(st.user || '') + '<br><a href="' + esc(st.spreadsheetUrl) + '" target="_blank">Open database sheet ↗</a><br>v' + esc(st.version);
+  $('#page-title').textContent = S.view === 'dealForm' && S.params.id ? 'Edit Deal' : (TITLES[S.view] || '');
+}
+
+function render() {
+  renderChrome();
+  const v = VIEWS[S.view] || VIEWS.dashboard;
+  const banner = S.settings.testMode && ['dashboard', 'deals', 'deal'].includes(S.view)
+    ? '<div class="test-banner">⚠ <div><b>Test mode is on.</b> Distributions are delivered only to <b>' + esc(S.settings.values.TEST_EMAIL) + '</b> — no investor will be emailed. Switch to live in <a data-go="settings">Settings</a>.</div></div>' : '';
+  $('#view').innerHTML = banner + v.html();
+  if (v.mount) v.mount();
+}
+
+// ---------- modal ----------
+function openModal(title, body, footer, opts) {
+  opts = opts || {};
+  $('#modal-root').innerHTML = '<div class="overlay" data-overlay><div class="modal ' + (opts.wide ? 'wide' : '') + '">' +
+    '<div class="mh"><h2>' + title + '</h2><button class="x" data-act="closeModal">×</button></div>' +
+    '<div class="mb" id="mb">' + body + '</div>' + (footer ? '<div class="mf" id="mf">' + footer + '</div>' : '') + '</div></div>';
+  if (opts.mount) opts.mount();
+}
+function closeModal() { $('#modal-root').innerHTML = ''; DIST = null; }
+
+// ---------- generic form helpers ----------
+const field = (label, input, hint, cls) => '<div class="field ' + (cls || '') + '"><label>' + label + '</label>' + input + (hint ? '<div class="hint">' + hint + '</div>' : '') + '</div>';
+const inp = (name, val, type, attrs) => '<input type="' + (type || 'text') + '" name="' + name + '" value="' + esc(val == null ? '' : val) + '" ' + (attrs || '') + '>';
+const moneyInp = (name, val, attrs) => '<div class="prefix"><span>$</span>' + inp(name, isNum(val) ? val : '', 'text', 'inputmode="decimal" ' + (attrs || '')) + '</div>';
+const sel = (name, val, options, blank) => '<select name="' + name + '">' + (blank !== undefined ? '<option value="">' + esc(blank) + '</option>' : '') +
+  options.map(o => { const v = Array.isArray(o) ? o[0] : o, l = Array.isArray(o) ? o[1] : o; return '<option value="' + esc(v) + '"' + (String(v) === String(val) ? ' selected' : '') + '>' + esc(l) + '</option>'; }).join('') + '</select>';
+const area = (name, val, attrs) => '<textarea name="' + name + '" ' + (attrs || '') + '>' + esc(val || '') + '</textarea>';
+const chk = (name, on, label) => '<label class="check"><input type="checkbox" name="' + name + '"' + (on ? ' checked' : '') + '> ' + label + '</label>';
+function chips(group, options, selected) {
+  const sel = list(selected).map(lc);
+  const all = options.slice();
+  list(selected).forEach(s => { if (!all.map(lc).includes(lc(s))) all.push(s); });
+  return '<div class="chips" data-chipgroup="' + group + '">' + all.map(o => '<span class="chip' + (sel.includes(lc(o)) ? ' on' : '') + '" data-act="chip" data-val="' + esc(o) + '">' + esc(o) + '</span>').join('') + '</div>';
+}
+const chipVals = (group, root) => $$('[data-chipgroup="' + group + '"] .chip.on', root).map(c => c.dataset.val);
+function formData(form) {
+  const o = {};
+  $$('input,select,textarea', form).forEach(el => {
+    if (!el.name) return;
+    o[el.name] = el.type === 'checkbox' ? el.checked : el.value;
+  });
+  return o;
+}
+const statusPill = s => '<span class="status st-' + esc(s) + '">' + esc(s) + '</span>';
+
+// ============================================================
+// VIEWS
+// ============================================================
+const VIEWS = {};
+
+// ---------- dashboard ----------
+VIEWS.dashboard = {
+  html() {
+    const d = S.dashboard;
+    if (!d) return '<div class="loading"><span class="spinner"></span> Loading…</div>';
+    const ready = S.deals.filter(x => x.status === 'Available').slice(0, 6);
+    return '<div class="grid g4">' +
+      kpi('Active Investors', fmtNum(d.investors.active), d.investors.total + ' total · ' + d.investors.optedOut + ' opted out') +
+      kpi('Available Deals', fmtNum(d.deals.Available || 0), (d.deals.Pending || 0) + ' pending · ' + (d.deals.Sold || 0) + ' sold') +
+      kpi('Emails Sent · 30d', fmtNum(d.emails30d), d.queued ? d.queued + ' queued now' : 'Individually delivered') +
+      kpi('Interested Buyers · 30d', fmtNum(d.interested30d), d.responses30d + ' total responses') +
+      '</div>' +
+      '<div class="row" style="margin:22px 0">' +
+      '<button class="btn primary" data-go="dealForm">' + icon('plus') + 'Submit New Deal</button>' +
+      '<button class="btn" data-act="newInvestor">' + icon('users') + 'Add Investor</button>' +
+      '<button class="btn" data-go="import">' + icon('upload') + 'Import from Google Sheets</button>' +
+      '<button class="btn" data-act="scanInbox">' + icon('inbox') + 'Scan Inbox for Replies</button>' +
+      '</div>' +
+      '<div class="grid" style="grid-template-columns:1.4fr 1fr">' +
+      '<div class="card"><div class="hd"><h3>Ready to Distribute</h3><div class="spacer" style="flex:1"></div><a data-go="deals" class="small" style="cursor:pointer">All deals →</a></div>' +
+      (ready.length ? '<table class="t"><tbody>' + ready.map(x =>
+        '<tr><td><div style="font-family:var(--serif);font-size:17px;font-weight:600;cursor:pointer" data-go="deal" data-id="' + esc(x.id) + '">' + esc(x.address) + '</div><div class="small muted">' + esc(x.id) + ' · ' + esc([x.city, x.state].filter(Boolean).join(', ')) + '</div></td>' +
+        '<td class="nowrap"><div>' + money(x.askingPrice) + '</div><div class="small muted">ARV ' + short$(x.arv) + '</div></td>' +
+        '<td class="nowrap small muted">' + (x.timesDistributed ? 'Sent ' + x.timesDistributed + '× · ' + x.totalRecipients + ' investors' : 'Not sent yet') + '</td>' +
+        '<td class="right"><button class="btn-send sm" data-act="distribute" data-id="' + esc(x.id) + '">' + icon('send') + 'Send</button></td></tr>').join('') + '</tbody></table>'
+        : '<div class="empty"><h4>No available deals</h4>Submit a deal to distribute it to your investor network.<div style="margin-top:14px"><button class="btn primary" data-go="dealForm">Submit Deal</button></div></div>') +
+      '</div>' +
+      '<div class="card"><div class="hd"><h3>Recent Activity</h3></div><div class="bd" style="padding-top:4px;padding-bottom:4px">' +
+      (d.activity.length ? '<ul class="activity">' + d.activity.map(a =>
+        '<li><div class="ic">' + icon(a.kind === 'distribution' ? 'send' : 'mail') + '</div><div><div>' + esc(a.text) + '</div><div class="when">' + ago(a.when) + (a.status ? ' · ' + esc(a.status) : '') + '</div></div></li>').join('') + '</ul>'
+        : '<div class="empty" style="padding:30px">No activity yet.</div>') +
+      '</div></div></div>' +
+      (d.lastScan ? '<p class="small muted" style="margin-top:14px">Inbox last scanned ' + ago(d.lastScan) + (S.settings.autoTracking ? ' · auto-tracking every 15 min' : ' · <a data-go="settings">enable auto-tracking</a>') + '</p>' : '');
+  },
+  mount() { if (!S._dashFresh) { S._dashFresh = true; } }
+};
+const kpi = (l, v, m) => '<div class="card kpi"><div class="label">' + l + '</div><div class="value">' + v + '</div><div class="meta">' + esc(m) + '</div></div>';
+
+// ---------- deals list ----------
+VIEWS.deals = {
+  html() {
+    const q = lc(S.dealSearch);
+    const counts = { All: S.deals.length };
+    L().dealStatuses.forEach(s => counts[s] = S.deals.filter(d => d.status === s).length);
+    const shown = S.deals.filter(d => (S.dealFilter === 'All' || d.status === S.dealFilter) &&
+      (!q || lc([d.id, d.address, d.city, d.state, d.zip, d.market, d.propertyType].join(' ')).includes(q)));
+    return '<div class="toolbar"><div class="tabs" style="margin:0;border:0">' +
+      ['All'].concat(L().dealStatuses).map(s => '<a class="' + (S.dealFilter === s ? 'on' : '') + '" data-act="dealFilter" data-val="' + s + '">' + s + '<span class="n">' + counts[s] + '</span></a>').join('') +
+      '</div><div style="flex:1"></div><input type="search" id="dealSearch" placeholder="Search address, city, ID…" value="' + esc(S.dealSearch) + '">' +
+      '<button class="btn primary" data-go="dealForm">' + icon('plus') + 'Submit Deal</button></div>' +
+      (shown.length ? '<div class="deal-grid">' + shown.map(dealCard).join('') + '</div>'
+        : '<div class="card empty"><h4>No deals here yet</h4>Submit the properties you get under contract, then send them to your network with one click.<div style="margin-top:14px"><button class="btn primary" data-go="dealForm">Submit Deal</button></div></div>');
+  },
+  mount() {
+    const s = $('#dealSearch');
+    if (s) s.addEventListener('input', debounce(e => { S.dealSearch = e.target.value; const pos = e.target.selectionStart; render(); const n = $('#dealSearch'); n.focus(); n.setSelectionRange(pos, pos); }, 250));
+  }
+};
+
+function dealCard(d) {
+  const m = d.metrics || {};
+  return '<div class="deal-card">' +
+    '<div class="top" data-go="deal" data-id="' + esc(d.id) + '"><div class="row" style="justify-content:space-between"><span class="id">' + esc(d.id) + (d.propertyType ? ' · ' + esc(d.propertyType) : '') + '</span>' + statusPill(d.status) + '</div>' +
+    '<div class="addr">' + esc(d.address) + '</div><div class="city">' + esc([d.city, [d.state, d.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ')) + (d.market ? ' · ' + esc(d.market) : '') + '</div></div>' +
+    '<div class="nums"><div><div class="l">Price</div><div class="v">' + short$(d.askingPrice) + '</div></div><div><div class="l">ARV</div><div class="v">' + short$(d.arv) + '</div></div>' +
+    '<div><div class="l">Repairs</div><div class="v">' + short$(d.repairs) + '</div></div><div><div class="l">Spread</div><div class="v" style="color:var(--accent-2)">' + short$(m.spread) + '</div></div></div>' +
+    '<div class="meta"><span>' + (isNum(d.beds) ? d.beds : '–') + ' bd / ' + (isNum(d.baths) ? d.baths : '–') + ' ba</span><span>' + (isNum(d.sqft) ? fmtNum(d.sqft) + ' sf' : '— sf') + '</span>' +
+    '<span>' + d.photoIds.length + ' photos</span><span>' + (d.timesDistributed ? '✓ Sent to ' + d.totalRecipients : 'Not distributed') + '</span><span>' + d.interested + ' interested</span></div>' +
+    '<div class="actions">' + (d.status !== 'Sold' ? '<button class="btn-send" data-act="distribute" data-id="' + esc(d.id) + '">' + icon('send') + 'Send to Investor Network</button>' : '') +
+    '<button class="btn sm ghost" data-go="dealForm" data-id="' + esc(d.id) + '" title="Edit">' + icon('edit') + '</button>' +
+    '<button class="btn sm ghost" data-go="deal" data-id="' + esc(d.id) + '" title="Tracking">' + icon('eye') + '</button></div></div>';
+}
+
+// ---------- deal form ----------
+VIEWS.dealForm = {
+  html() {
+    const editing = !!S.params.id;
+    if (!S.form) {
+      const ex = editing ? S.deals.find(d => d.id === S.params.id) : null;
+      S.form = ex ? JSON.parse(JSON.stringify(ex)) : { showAssignment: /^true$/i.test(S.settings.values.SHOW_ASSIGNMENT_DEFAULT), showAccess: true, state: '' };
+    }
+    const f = S.form;
+    const markets = L().markets;
+    return '<form id="dealForm" autocomplete="off"><div class="grid" style="grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);align-items:start">' +
+      '<div class="stack">' +
+      '<div class="card"><div class="hd"><h3>Property</h3>' + (editing ? '<span class="muted small" style="margin-left:auto">' + esc(f.id) + '</span>' : '') + '</div><div class="bd grid" style="grid-template-columns:2fr 1fr 70px 100px">' +
+      field('Property address *', inp('address', f.address, 'text', 'required placeholder="123 Main Street"'), '', '') +
+      field('City', inp('city', f.city)) + field('State', inp('state', f.state, 'text', 'maxlength="2" style="text-transform:uppercase"')) + field('Zip', inp('zip', f.zip, 'text', 'inputmode="numeric"')) +
+      '</div><div class="bd grid g4" style="padding-top:0">' +
+      field('Property type', sel('propertyType', f.propertyType, L().propertyTypes, 'Select…')) +
+      field('Market', markets.length ? sel('market', f.market, markets, 'Select…') : inp('market', f.market, 'text', 'placeholder="e.g. Atlanta Metro"'), markets.length ? '' : 'Add markets in Settings') +
+      field('Bedrooms', inp('beds', f.beds, 'number', 'min="0" step="1"')) + field('Bathrooms', inp('baths', f.baths, 'number', 'min="0" step="0.5"')) +
+      field('Square footage', inp('sqft', f.sqft, 'number', 'min="0"')) + field('Lot size', inp('lotSize', f.lotSize, 'text', 'placeholder="0.25 acres"')) +
+      field('Year built', inp('yearBuilt', f.yearBuilt, 'number', 'min="1700" max="2100"')) + field('Closing date', inp('closingDate', f.closingDate, 'date')) +
+      '</div></div>' +
+
+      '<div class="card"><div class="hd"><h3>Deal Numbers</h3></div><div class="bd grid g4">' +
+      field('Asking price *', moneyInp('askingPrice', f.askingPrice, 'data-calc required'), 'Purchase price to the investor') +
+      field('ARV', moneyInp('arv', f.arv, 'data-calc')) + field('Estimated repairs', moneyInp('repairs', f.repairs, 'data-calc')) +
+      field('Assignment price', moneyInp('assignmentPrice', f.assignmentPrice), chk('showAssignment', f.showAssignment, 'Show in investor email')) +
+      '</div><div class="bd" style="padding-top:0"><div class="metric-strip" id="calc"></div></div></div>' +
+
+      '<div class="card"><div class="hd"><h3>Description & Access</h3></div><div class="bd stack">' +
+      field('Deal description', area('description', f.description, 'rows="6" placeholder="Highlights, condition, rehab scope, rent comps, neighborhood…"'), 'Shown in the investor email. Blank lines create paragraphs.') +
+      field('Access instructions', area('access', f.access, 'rows="3" placeholder="Open house Saturday 10am–12pm. Call to schedule a walkthrough."'), chk('showAccess', f.showAccess, 'Include in investor email') + ' &nbsp;— do not put lockbox codes here if this is included; use Internal notes.') +
+      field('Internal notes', area('internalNotes', f.internalNotes, 'rows="2" placeholder="Seller info, lockbox code, title company… (never emailed)"'), 'Private — never sent to investors.') +
+      '</div></div></div>' +
+
+      '<div class="stack" style="position:sticky;top:90px">' +
+      '<div class="card"><div class="hd"><h3>Photos</h3><span class="muted small" style="margin-left:auto" id="photoCount"></span></div><div class="bd">' +
+      '<div class="drop" id="drop">' + icon('upload').replace('<svg', '<svg style="width:26px;height:26px;margin-bottom:6px"') + '<div><b>Drop photos here</b> or click to choose</div><div class="small">JPG / PNG · resized automatically · first photo is the cover</div></div>' +
+      '<input type="file" id="photoInput" accept="image/*" multiple class="hidden">' +
+      '<div class="photos" id="photos" style="margin-top:12px"></div></div></div>' +
+
+      '<div class="card"><div class="hd"><h3>Video Walkthrough</h3></div><div class="bd stack">' +
+      field('Video link', inp('videoUrl', f.videoUrl, 'url', 'placeholder="YouTube, Loom, Google Drive or Dropbox link"')) +
+      '<div class="row"><button type="button" class="btn sm" data-act="pickVideo">' + icon('upload') + 'Upload video file</button><span class="small muted" id="videoStatus">' + (S.pendingVideo ? esc(S.pendingVideo.name) + ' (uploads on save)' : 'Up to 45 MB — stored in Google Drive') + '</span></div>' +
+      '<input type="file" id="videoInput" accept="video/*" class="hidden"></div></div>' +
+
+      '<div class="card"><div class="bd stack">' +
+      '<button type="submit" class="btn primary" style="width:100%;padding:13px" id="saveDeal">' + (editing ? 'Save Changes' : 'Save Deal') + '</button>' +
+      '<button type="button" class="btn-send" style="width:100%;justify-content:center" data-act="saveAndSend">' + icon('send') + 'Save & Send to Investor Network</button>' +
+      (editing ? '<button type="button" class="btn ghost" style="width:100%" data-go="deal" data-id="' + esc(f.id) + '">Cancel</button>' : '') +
+      '</div></div></div></div></form>';
+  },
+  mount() {
+    const form = $('#dealForm');
+    const calc = () => {
+      const v = formData(form), p = +String(v.askingPrice).replace(/[$,]/g, '') || 0, a = +String(v.arv).replace(/[$,]/g, '') || 0, r = +String(v.repairs).replace(/[$,]/g, '') || 0, sq = +v.sqft || 0;
+      const all = p + r;
+      $('#calc').innerHTML = [['All-in', p ? money(all) : '—'], ['Potential spread', a && p ? money(a - all) : '—', a - all > 0], ['All-in % of ARV', a && p ? (all / a * 100).toFixed(1) + '%' : '—'], ['Price / sq ft', p && sq ? '$' + Math.round(p / sq) : '—']]
+        .map(x => '<div><div class="l">' + x[0] + '</div><div class="v ' + (x[2] ? 'good' : '') + '">' + x[1] + '</div></div>').join('');
+    };
+    form.addEventListener('input', calc); calc();
+    form.addEventListener('submit', e => { e.preventDefault(); saveDealForm(false); });
+    const drop = $('#drop'), pi = $('#photoInput');
+    drop.addEventListener('click', () => pi.click());
+    ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+    ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+    drop.addEventListener('drop', e => addPhotos(e.dataTransfer.files));
+    pi.addEventListener('change', () => { addPhotos(pi.files); pi.value = ''; });
+    $('#videoInput').addEventListener('change', e => pickVideo(e.target.files[0]));
+    if (S.params.id && !S.photoPreviews) {
+      S.photoPreviews = [];
+      renderPhotos(true);
+      api('getDealPhotoPreviews', S.params.id).then(p => { S.photoPreviews = p; renderPhotos(); }).catch(fail);
+    } else renderPhotos();
+  }
+};
+
+function renderPhotos(loading) {
+  const el = $('#photos'); if (!el) return;
+  const existing = (S.photoPreviews || []).map((p, i) => '<div class="photo">' + (p.dataUrl ? '<img src="' + p.dataUrl + '">' : '<div class="loading small">' + esc(p.name) + '</div>') +
+    (i === 0 ? '<span class="cover">COVER</span>' : '') + '<div class="ops">' + (i ? '<button type="button" data-act="coverPhoto" data-id="' + esc(p.id) + '">Make cover</button>' : '<span></span>') +
+    '<button type="button" data-act="removePhoto" data-id="' + esc(p.id) + '">Remove</button></div></div>');
+  const pending = S.pendingPhotos.map((p, i) => '<div class="photo"><img src="' + p.dataUrl + '">' + (!existing.length && i === 0 ? '<span class="cover">COVER</span>' : '') +
+    '<span class="pending">' + (p.uploading ? 'Uploading…' : 'Uploads on save') + '</span><div class="ops"><span></span><button type="button" data-act="removePending" data-i="' + i + '">Remove</button></div></div>');
+  el.innerHTML = loading ? '<div class="loading small" style="grid-column:1/-1;padding:16px"><span class="spinner"></span> Loading photos…</div>' : existing.concat(pending).join('');
+  const c = $('#photoCount'); if (c) c.textContent = ((S.photoPreviews || []).length + S.pendingPhotos.length) + ' photos';
+}
+
+function compressImage(file, maxDim, quality) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Could not read ' + file.name));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error(file.name + ' is not a supported image (use JPG or PNG; convert HEIC first).'));
+      img.onload = () => {
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+        const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        resolve({ name: file.name.replace(/\.[^.]+$/, '') + '.jpg', mime: 'image/jpeg', dataUrl: c.toDataURL('image/jpeg', quality) });
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function addPhotos(files) {
+  const arr = Array.from(files || []).filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|webp|gif)$/i.test(f.name));
+  if (!arr.length) return toast('Please choose image files.', 'warn');
+  for (const file of arr) {
+    try {
+      const p = await compressImage(file, 1600, 0.82);
+      if (S.params.id) {
+        p.uploading = true; S.pendingPhotos.push(p); renderPhotos();
+        await api('uploadDealPhoto', S.params.id, p.name, p.mime, p.dataUrl);
+        S.pendingPhotos = S.pendingPhotos.filter(x => x !== p);
+        S.photoPreviews = await api('getDealPhotoPreviews', S.params.id);
+        syncDealPhotos();
+      } else {
+        S.pendingPhotos.push(p);
+      }
+      renderPhotos();
+    } catch (e) { S.pendingPhotos = S.pendingPhotos.filter(x => !x.uploading); renderPhotos(); fail(e); }
+  }
+}
+function syncDealPhotos() {
+  const d = S.deals.find(x => x.id === S.params.id);
+  if (d && S.photoPreviews) d.photoIds = S.photoPreviews.map(p => p.id);
+}
+
+function pickVideo(file) {
+  if (!file) return;
+  if (file.size > 45 * 1024 * 1024) return toast('That video is over 45 MB. Upload it to YouTube, Loom or Google Drive and paste the link instead.', 'warn');
+  const r = new FileReader();
+  r.onload = () => {
+    S.pendingVideo = { name: file.name, mime: file.type || 'video/mp4', dataUrl: r.result };
+    if (S.params.id) uploadPendingVideo(S.params.id).then(d => { if (d) { replaceDeal(d); S.form.videoUrl = d.videoUrl; const vi = $('[name=videoUrl]'); if (vi) vi.value = d.videoUrl; } });
+    else $('#videoStatus').textContent = file.name + ' (uploads on save)';
+  };
+  r.readAsDataURL(file);
+}
+async function uploadPendingVideo(id) {
+  if (!S.pendingVideo) return null;
+  const v = S.pendingVideo;
+  const st = $('#videoStatus'); if (st) st.innerHTML = '<span class="spinner"></span> Uploading ' + esc(v.name) + '…';
+  try {
+    const d = await api('uploadDealVideo', id, v.name, v.mime, v.dataUrl);
+    S.pendingVideo = null;
+    if (st) st.textContent = 'Uploaded ✓ ' + v.name;
+    toast('Video uploaded.');
+    return d;
+  } catch (e) { if (st) st.textContent = 'Upload failed'; fail(e); return null; }
+}
+
+function replaceDeal(d) {
+  const i = S.deals.findIndex(x => x.id === d.id);
+  if (i > -1) S.deals[i] = d; else S.deals.unshift(d);
+}
+
+async function saveDealForm(thenSend) {
+  const form = $('#dealForm');
+  const data = formData(form);
+  if (!data.address.trim()) return toast('Property address is required.', 'warn');
+  if (!data.askingPrice) return toast('Asking / purchase price is required.', 'warn');
+  if (S.params.id) data.id = S.params.id;
+  const btn = $('#saveDeal'); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Saving…';
+  try {
+    let d = await api('saveDeal', data);
+    S.form = d;
+    if (S.pendingPhotos.length) {
+      let n = 0;
+      for (const p of S.pendingPhotos.slice()) {
+        p.uploading = true; renderPhotos();
+        btn.innerHTML = '<span class="spinner"></span> Uploading photo ' + (++n) + ' of ' + S.pendingPhotos.length + '…';
+        await api('uploadDealPhoto', d.id, p.name, p.mime, p.dataUrl);
+      }
+      S.pendingPhotos = [];
+    }
+    if (S.pendingVideo) { btn.innerHTML = '<span class="spinner"></span> Uploading video…'; await uploadPendingVideo(d.id); }
+    d = await api('getDeal', d.id);
+    replaceDeal(d);
+    toast('Deal <b>' + esc(d.id) + '</b> saved.');
+    go('deal', { id: d.id });
+    if (thenSend) openDistribute(d.id);
+  } catch (e) {
+    fail(e);
+    btn.disabled = false; btn.textContent = S.params.id ? 'Save Changes' : 'Save Deal';
+  }
+}
+
+// ---------- deal detail / tracking ----------
+VIEWS.deal = {
+  html() {
+    const d = S.deals.find(x => x.id === S.params.id);
+    if (!d) return '<div class="empty"><h4>Deal not found</h4></div>';
+    const m = d.metrics || {};
+    const t = S.tracking;
+    const recips = t ? t.recipients.filter(r => S.showTest || r.mode === 'LIVE') : [];
+    const tabs = [['recipients', 'Recipients', t ? t.recipients.filter(r => r.mode === 'LIVE' && r.status === 'Sent').length : '…'], ['responses', 'Responses', t ? t.responses.length : '…'], ['jobs', 'Distributions', t ? t.jobs.length : '…'], ['photos', 'Photos', d.photoIds.length], ['preview', 'Email Preview', '']];
+    let body = '';
+    if (!t) body = '<div class="loading"><span class="spinner"></span> Loading tracking…</div>';
+    else if (S.trackTab === 'recipients') {
+      body = '<div class="row" style="margin-bottom:12px"><label class="check"><input type="checkbox" data-change="showTest"' + (S.showTest ? ' checked' : '') + '> Show test-mode sends</label></div>' +
+        (recips.length ? '<div class="table-wrap"><table class="t"><thead><tr><th>Investor</th><th>Email</th><th>Tier</th><th>Mode</th><th>Status</th><th>Sent</th></tr></thead><tbody>' +
+          recips.map(r => '<tr><td>' + esc(r.investorName) + '<div class="small muted">' + esc(r.investorId) + '</div></td><td>' + esc(r.investorEmail) + '</td><td class="tier">' + esc(r.tier) + '</td><td><span class="tag">' + esc(r.mode) + '</span></td>' +
+            '<td>' + esc(r.status) + (r.error ? '<div class="small" style="color:#FF9A95">' + esc(r.error) + '</div>' : '') + (r.mode === 'TEST' && r.deliveredTo ? '<div class="small muted">→ ' + esc(r.deliveredTo) + '</div>' : '') + '</td><td class="nowrap">' + fmtDT(r.sentAt) + '</td></tr>').join('') + '</tbody></table></div>'
+          : '<div class="card empty"><h4>Not distributed yet</h4>' + (t.recipients.length ? 'Only test-mode sends so far.' : 'Click SEND TO INVESTOR NETWORK to distribute this deal.') + '</div>');
+    } else if (S.trackTab === 'responses') {
+      body = '<div class="row" style="margin-bottom:12px"><button class="btn sm primary" data-act="logResponse" data-id="' + esc(d.id) + '">' + icon('plus') + 'Log Response</button><button class="btn sm" data-act="scanInbox">' + icon('inbox') + 'Scan Inbox</button></div>' + responsesTable(t.responses, false);
+    } else if (S.trackTab === 'jobs') {
+      body = jobsTable(t.jobs, false);
+    } else if (S.trackTab === 'photos') {
+      body = '<div class="photos" id="detailPhotos"><div class="loading small"><span class="spinner"></span></div></div>';
+    } else if (S.trackTab === 'preview') {
+      body = '<div class="row" style="margin-bottom:12px"><input type="email" id="testTo" value="' + esc(S.settings.values.TEST_EMAIL) + '" style="max-width:280px"><button class="btn sm" data-act="sendTest" data-id="' + esc(d.id) + '">' + icon('mail') + 'Send test email</button></div><iframe class="preview-frame" id="previewFrame"></iframe>';
+    }
+    return '<div class="card" style="margin-bottom:18px;overflow:hidden"><div style="padding:24px 26px;background:linear-gradient(160deg,var(--green-900),var(--panel) 70%)">' +
+      '<div class="row" style="justify-content:space-between;align-items:flex-start"><div><div class="small" style="letter-spacing:2px;color:var(--accent-soft);text-transform:uppercase">' + esc(d.id) + (d.propertyType ? ' · ' + esc(d.propertyType) : '') + (d.market ? ' · ' + esc(d.market) : '') + '</div>' +
+      '<div style="font-family:var(--serif);font-size:34px;font-weight:600;margin-top:6px;line-height:1.1">' + esc(d.address) + '</div><div class="muted">' + esc([d.city, [d.state, d.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ')) + '</div></div>' +
+      '<div class="row">' + statusPill(d.status) + '</div></div>' +
+      '<div class="row" style="margin-top:18px">' + (d.status !== 'Sold' ? '<button class="btn-send" data-act="distribute" data-id="' + esc(d.id) + '">' + icon('send') + 'Send to Investor Network</button>' : '') +
+      '<button class="btn" data-go="dealForm" data-id="' + esc(d.id) + '">' + icon('edit') + 'Edit Deal</button>' +
+      '<div style="flex:1"></div><span class="small muted">Mark as:</span>' + L().dealStatuses.map(s => '<button class="btn sm' + (d.status === s ? ' primary' : '') + '" data-act="setStatus" data-id="' + esc(d.id) + '" data-val="' + s + '"' + (d.status === s ? ' disabled' : '') + '>' + s + '</button>').join('') + '</div></div>' +
+      '<div class="metric-strip" style="border-radius:0;border-left:0;border-right:0;border-bottom:0">' +
+      [['Asking', money(d.askingPrice)], ['ARV', money(d.arv)], ['Repairs', money(d.repairs)], ['Spread', money(m.spread), true], ['All-in % ARV', isNum(m.allInPctArv) ? m.allInPctArv + '%' : '—'], ['Assignment', money(d.assignmentPrice) + (d.showAssignment ? '' : ' <span class="small muted">(hidden)</span>')], ['Closing', fmtDate(d.closingDate)]]
+        .map(x => '<div><div class="l">' + x[0] + '</div><div class="v ' + (x[2] ? 'good' : '') + '">' + x[1] + '</div></div>').join('') + '</div>' +
+      '<div class="metric-strip" style="border-radius:0;border:0;border-top:1px solid var(--line)">' +
+      [['Times distributed', d.timesDistributed], ['Investors reached', d.totalRecipients], ['Responses', d.responses], ['Interested', d.interested, true], ['Last sent', d.lastDistributed ? fmtDate(d.lastDistributed) : '—'], ['Buyer', d.buyer || '—'], ['Sold', d.status === 'Sold' ? money(d.soldPrice) + ' · ' + fmtDate(d.soldDate) : '—']]
+        .map(x => '<div><div class="l">' + x[0] + '</div><div class="v ' + (x[2] ? 'good' : '') + '" style="font-size:19px">' + esc(x[1]) + '</div></div>').join('') + '</div></div>' +
+      (d.description ? '<div class="card" style="margin-bottom:18px"><div class="bd" style="white-space:pre-wrap;line-height:1.6;color:var(--text-2)">' + esc(d.description) + '</div></div>' : '') +
+      '<div class="tabs">' + tabs.map(x => '<a class="' + (S.trackTab === x[0] ? 'on' : '') + '" data-act="trackTab" data-val="' + x[0] + '">' + x[1] + (x[2] !== '' ? '<span class="n">' + x[2] + '</span>' : '') + '</a>').join('') + '</div>' + body;
+  },
+  mount() {
+    if (!S.tracking) {
+      api('getDealTracking', S.params.id).then(t => { S.tracking = t; replaceDeal(t.deal); if (S.view === 'deal') render(); }).catch(fail);
+      return;
+    }
+    if (S.trackTab === 'preview') loadPreview(S.params.id, $('#previewFrame'));
+    if (S.trackTab === 'photos') {
+      api('getDealPhotoPreviews', S.params.id).then(p => {
+        const el = $('#detailPhotos'); if (!el) return;
+        el.innerHTML = p.length ? p.map((x, i) => '<a class="photo" href="' + esc(x.url) + '" target="_blank">' + (x.dataUrl ? '<img src="' + x.dataUrl + '">' : '') + (i === 0 ? '<span class="cover">COVER</span>' : '') + '</a>').join('')
+          : '<div class="muted">No photos. <a data-go="dealForm" data-id="' + esc(S.params.id) + '">Add photos</a></div>';
+      }).catch(fail);
+    }
+  }
+};
+
+function loadPreview(id, frame) {
+  if (!frame) return;
+  frame.srcdoc = '<div style="font-family:Arial;padding:40px;color:#666;text-align:center">Rendering email preview…</div>';
+  api('getEmailPreview', id).then(p => { frame.srcdoc = '<div style="font:13px Arial;padding:10px 14px;background:#f2f2f2;border-bottom:1px solid #ddd"><b>Subject:</b> ' + esc(p.subject) + '</div>' + p.html; }).catch(fail);
+}
+
+function responsesTable(rows, showDeal) {
+  if (!rows.length) return '<div class="card empty"><h4>No responses yet</h4>Replies to deal emails are logged automatically when you scan the inbox (or every 15 minutes with auto-tracking on).</div>';
+  return '<div class="table-wrap"><table class="t"><thead><tr><th>Received</th><th>Investor</th>' + (showDeal ? '<th>Deal</th>' : '') + '<th>Type</th><th>Offer</th><th>Message</th><th>Follow-up</th><th></th></tr></thead><tbody>' +
+    rows.map(r => '<tr><td class="nowrap">' + fmtDT(r.received) + '<div class="small muted">' + esc(r.source) + '</div></td><td>' + esc(r.investorName) + '<div class="small muted">' + esc(r.investorEmail) + '</div></td>' +
+      (showDeal ? '<td><a data-go="deal" data-id="' + esc(r.dealId) + '" style="cursor:pointer">' + esc(r.property || r.dealId || '—') + '</a><div class="small muted">' + esc(r.dealId) + '</div></td>' : '') +
+      '<td><span class="tag" style="' + (r.type === 'Interested' || r.type === 'Offer' ? 'color:var(--accent-2);border-color:var(--green-600)' : '') + '">' + esc(r.type) + '</span></td><td class="nowrap">' + (isNum(r.offerAmount) && r.offerAmount !== '' ? money(r.offerAmount) : '—') + '</td>' +
+      '<td style="max-width:320px"><div class="small" style="white-space:pre-wrap;max-height:60px;overflow:hidden" title="' + esc(r.message) + '">' + esc(r.message) + '</div>' + (r.notes ? '<div class="small muted">Note: ' + esc(r.notes) + '</div>' : '') + '</td>' +
+      '<td><select data-change="respFollow" data-id="' + esc(r.id) + '" style="min-width:150px">' + L().followUpStatuses.map(s => '<option' + (s === r.followUp ? ' selected' : '') + '>' + esc(s) + '</option>').join('') + '</select></td>' +
+      '<td><button class="btn sm ghost" data-act="respNote" data-id="' + esc(r.id) + '" title="Add note">' + icon('edit') + '</button></td></tr>').join('') + '</tbody></table></div>';
+}
+
+function jobsTable(rows, showDeal) {
+  if (!rows.length) return '<div class="card empty"><h4>No distributions yet</h4></div>';
+  return '<div class="table-wrap"><table class="t"><thead><tr><th>Created</th>' + (showDeal ? '<th>Deal</th>' : '') + '<th>Mode</th><th>Audience</th><th>Total</th><th>Sent</th><th>Failed</th><th>Simulated</th><th>Status</th><th></th></tr></thead><tbody>' +
+    rows.map(j => '<tr><td class="nowrap">' + fmtDT(j.created) + '<div class="small muted">' + esc(j.createdBy) + '</div></td>' +
+      (showDeal ? '<td><a data-go="deal" data-id="' + esc(j.dealId) + '" style="cursor:pointer">' + esc(j.property) + '</a><div class="small muted">' + esc(j.dealId) + '</div></td>' : '') +
+      '<td><span class="mode-pill ' + (j.mode === 'LIVE' ? 'live' : 'test') + '" style="cursor:default;padding:3px 8px"><span class="dot"></span>' + esc(j.mode) + '</span></td><td class="small">' + esc(j.audience) + '</td>' +
+      '<td>' + esc(j.total) + '</td><td>' + esc(j.sent) + '</td><td>' + esc(j.failed) + '</td><td>' + esc(j.simulated) + '</td><td class="small">' + esc(j.status) + (j.notes ? '<div class="muted">' + esc(j.notes) + '</div>' : '') + '</td>' +
+      '<td>' + (/^Sending|^Paused/.test(j.status) ? '<button class="btn sm danger" data-act="cancelJob" data-id="' + esc(j.id) + '">Cancel rest</button>' : '') + '</td></tr>').join('') + '</tbody></table></div>';
+}
+
+// ---------- DISTRIBUTION WIZARD ----------
+let DIST = null;
+function openDistribute(dealId) {
+  const d = S.deals.find(x => x.id === dealId);
+  if (!d) return;
+  DIST = { deal: d, step: 1, audience: { mode: 'all', tiers: [], categories: [], markets: [], investorIds: [], matchCriteria: false, excludeAlreadySent: d.timesDistributed > 0 }, preview: null, prepared: null, pickQ: '' };
+  renderDist();
+}
+function renderDist() {
+  if (!DIST) return;
+  const d = DIST.deal, a = DIST.audience;
+  const steps = ['Audience', 'Preview', 'Confirm & Send'].map((s, i) => '<div class="' + (DIST.step === i + 1 ? 'on' : DIST.step > i + 1 ? 'done' : '') + '">' + (i + 1) + '. ' + s + '</div>').join('');
+  let body = '<div class="steps">' + steps + '</div>', foot = '';
+  if (DIST.step === 1) {
+    const opt = (m, t, s) => '<div class="option' + (a.mode === m ? ' on' : '') + '" data-act="distMode" data-val="' + m + '"><b>' + t + '</b><span>' + s + '</span></div>';
+    body += '<div class="grid" style="grid-template-columns:1.25fr 1fr;align-items:start"><div class="stack">' +
+      '<div class="grid g3">' + opt('all', 'All active investors', 'Everyone active & subscribed') + opt('segments', 'By tier / category', 'Target investor segments') + opt('selected', 'Hand-pick', 'Choose specific investors') + '</div>';
+    if (a.mode === 'segments') {
+      body += '<div><div class="section-title">Tiers</div>' + chips('d_tiers', L().tiers, a.tiers) + '</div>' +
+        '<div><div class="section-title">Categories</div>' + chips('d_categories', L().categories, a.categories) + '</div>' +
+        (L().markets.length ? '<div><div class="section-title">Markets</div>' + chips('d_markets', L().markets, a.markets) + '</div>' : '') +
+        '<div class="small muted">Within a group any selected value matches; across groups all must match. Leave a group empty to include everyone.</div>';
+    }
+    if (a.mode === 'selected') {
+      const q = lc(DIST.pickQ);
+      const act = S.investors.filter(i => i.status === 'Active' && !i.optOut && (!q || lc([i.firstName, i.lastName, i.company, i.email, i.tier, i.categories].join(' ')).includes(q)));
+      body += '<input type="search" id="pickQ" placeholder="Search investors…" value="' + esc(DIST.pickQ) + '"><div class="pick-list">' +
+        act.map(i => '<label><input type="checkbox" data-change="pickInv" value="' + esc(i.id) + '"' + (a.investorIds.includes(i.id) ? ' checked' : '') + '><span style="flex:1">' + esc((i.firstName + ' ' + i.lastName).trim() || i.company) + ' <span class="muted small">' + esc(i.email) + '</span></span><span class="tier">' + esc(i.tier) + '</span></label>').join('') +
+        (act.length ? '' : '<div class="empty" style="padding:20px">No active investors match.</div>') + '</div><div class="row"><button class="btn sm" data-act="pickAll">Select all shown</button><button class="btn sm ghost" data-act="pickNone">Clear</button><span class="small muted">' + a.investorIds.length + ' selected</span></div>';
+    }
+    body += '<div class="stack" style="padding-top:6px">' +
+      '<label class="check"><input type="checkbox" data-change="distOpt" name="matchCriteria"' + (a.matchCriteria ? ' checked' : '') + '> Only investors whose buying criteria match this deal (property type, price range, markets)</label>' +
+      '<label class="check"><input type="checkbox" data-change="distOpt" name="excludeAlreadySent"' + (a.excludeAlreadySent ? ' checked' : '') + '> Skip investors who already received this deal' + (d.timesDistributed ? ' (sent ' + d.timesDistributed + '× before)' : '') + '</label></div>' +
+      '</div><div class="card"><div class="bd" id="audienceBox"><div class="loading"><span class="spinner"></span></div></div></div></div>';
+    foot = '<button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn primary" data-act="distNext" id="distNext">Next: Preview Email →</button>';
+  } else if (DIST.step === 2) {
+    body += '<div class="row" style="margin-bottom:12px"><span class="muted small">This is exactly what each investor receives (personalized with their first name). Every email is sent individually — no investor sees another\'s address.</span><div style="flex:1"></div>' +
+      '<input type="email" id="testTo" value="' + esc(S.settings.values.TEST_EMAIL) + '" style="max-width:240px"><button class="btn sm" data-act="sendTest" data-id="' + esc(d.id) + '">' + icon('mail') + 'Send me a test</button></div>' +
+      '<iframe class="preview-frame" id="distFrame"></iframe>';
+    foot = '<button class="btn ghost" data-act="distBack">← Back</button><div style="flex:1"></div><button class="btn primary" data-act="distPrepare" id="distPrep">Next: Review & Confirm →</button>';
+  } else if (DIST.step === 3) {
+    const p = DIST.prepared;
+    const ex = p.excluded, exList = Object.keys(ex).filter(k => ex[k]).map(k => ex[k] + ' ' + ({ inactive: 'inactive', optedOut: 'opted out', invalidEmail: 'invalid email', duplicate: 'duplicate email', notInSegment: 'outside segment', criteria: "criteria don't match", alreadySent: 'already received' })[k]);
+    const summary = '<table class="t" style="margin:14px 0"><tbody>' +
+      [['Deal', esc(p.dealId) + ' · ' + esc(p.dealTitle) + (p.dealStatus !== 'Available' ? ' <span class="status st-' + esc(p.dealStatus) + '">' + esc(p.dealStatus) + '</span>' : '')], ['Audience', esc(p.audienceLabel)], ['Recipients', '<b>' + p.recipientCount + '</b> investors' + (exList.length ? ' <span class="muted small">(excluded: ' + esc(exList.join(', ')) + ')</span>' : '')],
+        ['Delivery', 'One individual email per investor · Reply-To ' + esc(S.settings.values.REPLY_TO || S.settings.user)], ['Daily email quota left', p.quota >= 0 ? p.quota.toLocaleString() + (p.quota < (p.mode === 'LIVE' ? p.recipientCount : p.testDeliveries) ? ' — <b style="color:var(--amber)">remaining emails will be queued and sent automatically when quota resets</b>' : '') : 'unknown']]
+        .map(r => '<tr><td class="muted" style="width:200px">' + r[0] + '</td><td>' + r[1] + '</td></tr>').join('') + '</tbody></table>';
+    if (p.mode === 'TEST') {
+      body += '<div class="confirm-box test"><h4>Test Mode — no investors will be emailed</h4><div>The full distribution will run against <b>' + p.recipientCount + '</b> matching investors, but only the first <b>' + p.testDeliveries + '</b> emails are actually delivered — all to <b>' + esc(p.testEmail) + '</b> — each with a banner showing which investor it would have gone to. The rest are logged as simulated.</div>' + summary + '</div>';
+      foot = '<button class="btn ghost" data-act="distBack">← Back</button><div style="flex:1"></div><button class="btn-send" data-act="distConfirm" id="distGo">' + icon('send') + 'Run Test Distribution</button>';
+    } else {
+      body += '<div class="confirm-box live"><h4>LIVE distribution — ' + p.recipientCount + ' real investors</h4><div>Each investor will receive their own individual email about this deal. This cannot be undone.' + (p.previouslySent ? ' <b>This deal has already been distributed ' + p.previouslySent + '×.</b>' : '') + '</div>' + summary +
+        '<div class="field" style="align-items:flex-start"><label>Type <b style="color:#fff;letter-spacing:2px">SEND</b> to confirm</label><input type="text" class="confirm-input" id="confirmText" autocomplete="off" placeholder="SEND"></div></div>';
+      foot = '<button class="btn ghost" data-act="distBack">← Back</button><div style="flex:1"></div><button class="btn-send" data-act="distConfirm" id="distGo" disabled>' + icon('send') + 'Send to Investor Network</button>';
+    }
+  } else if (DIST.step === 4) {
+    const j = DIST.job;
+    const done = j.queued === 0;
+    const total = Number(j.total) || 1, sent = Number(j.sent) || 0, pct = Math.round(((sent + Number(j.failed || 0) + Number(j.simulated || 0)) / total) * 100);
+    body += '<div style="text-align:center;padding:10px 0 20px">' + (done ? '<div style="font-size:42px;color:var(--accent-2)">✓</div>' : '<div class="spinner lg"></div>') +
+      '<div style="font-family:var(--serif);font-size:28px;margin:10px 0">' + (done ? (j.mode === 'TEST' ? 'Test distribution complete' : 'Deal sent to your investor network') : 'Sending…') + '</div>' +
+      '<div class="muted">' + esc(j.status) + '</div></div><div class="progress"><div style="width:' + pct + '%"></div></div>' +
+      '<div class="grid g4" style="margin-top:18px">' + kpi('Recipients', j.total, j.mode) + kpi('Delivered', sent, j.mode === 'TEST' ? 'to ' + S.settings.values.TEST_EMAIL : 'individual emails') + kpi('Failed', j.failed || 0, '') + kpi(j.mode === 'TEST' ? 'Simulated' : 'Queued', j.mode === 'TEST' ? (j.simulated || 0) : j.queued, j.mode === 'TEST' ? 'not delivered (test)' : '') + '</div>' +
+      (!done ? '<p class="small muted" style="text-align:center;margin-top:16px">You can close this window — sending continues in the background and resumes automatically after the daily Gmail limit resets.</p>' : '');
+    foot = '<button class="btn" data-act="closeDistDone">' + (done ? 'Done' : 'Close') + '</button><button class="btn primary" data-act="closeDistTrack">View tracking</button>';
+  }
+  const title = 'Send to Investor Network <span class="muted" style="font-size:16px;font-family:var(--sans)">· ' + esc(d.address) + '</span>';
+  if ($('#mb') && $('.overlay')) { $('#mb').innerHTML = body; $('#mf').innerHTML = foot; $('.modal h2').innerHTML = title; distMount(); }
+  else openModal(title, body, foot, { wide: true, mount: distMount });
+}
+function distMount() {
+  if (!DIST) return;
+  if (DIST.step === 1) {
+    refreshAudience();
+    const pq = $('#pickQ');
+    if (pq) pq.addEventListener('input', debounce(e => { DIST.pickQ = e.target.value; renderDist(); const n = $('#pickQ'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250));
+  }
+  if (DIST.step === 2) loadPreview(DIST.deal.id, $('#distFrame'));
+  if (DIST.step === 3) {
+    const ct = $('#confirmText');
+    if (ct) { ct.focus(); ct.addEventListener('input', () => { $('#distGo').disabled = ct.value.trim().toUpperCase() !== 'SEND'; }); }
+  }
+}
+const refreshAudience = debounce(() => {
+  if (!DIST || DIST.step !== 1) return;
+  const box = $('#audienceBox'); if (!box) return;
+  box.innerHTML = '<div class="loading"><span class="spinner"></span> Counting recipients…</div>';
+  const seq = (DIST.seq = (DIST.seq || 0) + 1);
+  api('previewAudience', DIST.deal.id, DIST.audience).then(p => {
+    if (!DIST || DIST.seq !== seq || !$('#audienceBox')) return;
+    DIST.preview = p;
+    const ex = p.excluded;
+    const exRows = [['inactive', 'Inactive'], ['optedOut', 'Opted out'], ['invalidEmail', 'Invalid email'], ['duplicate', 'Duplicate email'], ['notInSegment', 'Outside segment'], ['criteria', "Criteria don't match"], ['alreadySent', 'Already received']].filter(r => ex[r[0]]);
+    $('#audienceBox').innerHTML = '<div class="section-title">Will receive this deal</div><div class="count-big">' + p.count + '</div><div class="muted" style="margin:4px 0 14px">investors · individual emails' + (p.testMode ? ' <span style="color:var(--amber)">(test mode)</span>' : '') + '</div>' +
+      (exRows.length ? '<div class="small muted" style="margin-bottom:12px">' + exRows.map(r => r[1] + ': ' + ex[r[0]]).join(' · ') + '</div>' : '') +
+      '<div class="pick-list" style="max-height:260px">' + (p.recipients.slice(0, 200).map(r => '<label style="cursor:default"><span style="flex:1">' + esc(r.name) + '<div class="small muted">' + esc(r.email) + '</div></span><span class="tier">' + esc(r.tier) + '</span></label>').join('') || '<div class="empty" style="padding:20px">Nobody matches.</div>') +
+      (p.recipients.length > 200 ? '<label class="muted small">…and ' + (p.recipients.length - 200) + ' more</label>' : '') + '</div>';
+    const nx = $('#distNext'); if (nx) nx.disabled = !p.count;
+  }).catch(fail);
+}, 200);
+
+async function distConfirm() {
+  const p = DIST.prepared;
+  const typed = p.mode === 'LIVE' ? ($('#confirmText') || {}).value : '';
+  if (p.mode === 'LIVE' && String(typed).trim().toUpperCase() !== 'SEND') return toast('Type SEND to confirm.', 'warn');
+  const btn = $('#distGo'); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Sending…';
+  try {
+    const job = await api('confirmDistribution', p.token, typed);
+    DIST.job = job; DIST.step = 4; renderDist();
+    pollJob(job.id);
+    refreshData();
+  } catch (e) { fail(e); btn.disabled = false; btn.innerHTML = icon('send') + (p.mode === 'LIVE' ? 'Send to Investor Network' : 'Run Test Distribution'); }
+}
+function pollJob(id) {
+  if (!DIST || !DIST.job || DIST.job.queued === 0) return;
+  setTimeout(() => {
+    if (!DIST || DIST.step !== 4) return;
+    api('getJobStatus', id).then(j => { if (!DIST) return; DIST.job = j; renderDist(); if (j.queued > 0) pollJob(id); else refreshData(); }).catch(fail);
+  }, 6000);
+}
+
+function refreshData() {
+  return Promise.all([api('listDeals'), api('getDashboard'), api('listInvestors')]).then(([deals, dash, inv]) => {
+    S.deals = deals; S.dashboard = dash; S.investors = inv; S.settings.quota = dash.quota;
+    if (!$('.overlay')) render(); else renderChrome();
+  }).catch(fail);
+}
+
+// ---------- investors ----------
+VIEWS.investors = {
+  html() {
+    const f = S.inv, q = lc(f.q);
+    const rows = S.investors.filter(i =>
+      (!f.status || (f.status === 'Opted out' ? i.optOut : i.status === f.status)) && (!f.tier || i.tier === f.tier) &&
+      (!f.category || list(i.categories).map(lc).includes(lc(f.category))) && (!f.market || list(i.markets).map(lc).includes(lc(f.market))) &&
+      (!q || lc([i.id, i.firstName, i.lastName, i.company, i.email, i.phone, i.criteria, i.categories, i.markets].join(' ')).includes(q)));
+    S._invShown = rows;
+    const allCats = uniq(L().categories.concat(...S.investors.map(i => list(i.categories))));
+    const allMk = uniq(L().markets.concat(...S.investors.map(i => list(i.markets))));
+    const allTiers = uniq(L().tiers.concat(S.investors.map(i => i.tier).filter(Boolean)));
+    const nSel = S.selected.size;
+    return '<div class="toolbar"><input type="search" id="invQ" placeholder="Search name, email, criteria…" value="' + esc(f.q) + '">' +
+      '<select data-change="invFilter" name="status">' + [['', 'All statuses'], ['Active', 'Active'], ['Inactive', 'Inactive'], ['Opted out', 'Opted out']].map(o => '<option value="' + o[0] + '"' + (f.status === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>' +
+      '<select data-change="invFilter" name="tier"><option value="">All tiers</option>' + allTiers.map(t => '<option' + (f.tier === t ? ' selected' : '') + '>' + esc(t) + '</option>').join('') + '</select>' +
+      '<select data-change="invFilter" name="category"><option value="">All categories</option>' + allCats.map(t => '<option' + (f.category === t ? ' selected' : '') + '>' + esc(t) + '</option>').join('') + '</select>' +
+      (allMk.length ? '<select data-change="invFilter" name="market"><option value="">All markets</option>' + allMk.map(t => '<option' + (f.market === t ? ' selected' : '') + '>' + esc(t) + '</option>').join('') + '</select>' : '') +
+      '<div style="flex:1"></div><span class="small muted">' + rows.length + ' of ' + S.investors.length + '</span><button class="btn" data-go="import">' + icon('upload') + 'Import</button><button class="btn primary" data-act="newInvestor">' + icon('plus') + 'Add Investor</button></div>' +
+      (nSel ? '<div class="bulkbar"><b>' + nSel + ' selected</b>' +
+        '<select data-change="bulkTier"><option value="">Set tier…</option>' + allTiers.map(t => '<option>' + esc(t) + '</option>').join('') + '</select>' +
+        '<select data-change="bulkAddCat"><option value="">Add category…</option>' + allCats.map(t => '<option>' + esc(t) + '</option>').join('') + '</select>' +
+        '<select data-change="bulkRemoveCat"><option value="">Remove category…</option>' + allCats.map(t => '<option>' + esc(t) + '</option>').join('') + '</select>' +
+        '<button class="btn sm" data-act="bulkStatus" data-val="Active">Activate</button><button class="btn sm" data-act="bulkStatus" data-val="Inactive">Deactivate</button>' +
+        '<button class="btn sm danger" data-act="bulkDelete">Delete</button><div style="flex:1"></div><button class="btn sm ghost" data-act="clearSel">Clear selection</button></div>' : '') +
+      (rows.length ? '<div class="table-wrap"><table class="t"><thead><tr><th style="width:36px"><input type="checkbox" data-change="selAll"' + (rows.length && rows.every(r => S.selected.has(r.id)) ? ' checked' : '') + '></th><th>Investor</th><th>Contact</th><th>Tier</th><th>Categories</th><th>Markets</th><th>Buy box</th><th>Status</th><th class="right">Deals rec\'d</th></tr></thead><tbody>' +
+        rows.map(i => '<tr class="click" data-act="editInvestor" data-id="' + esc(i.id) + '"><td data-stop><input type="checkbox" data-change="selOne" value="' + esc(i.id) + '"' + (S.selected.has(i.id) ? ' checked' : '') + '></td>' +
+          '<td class="nowrap"><div style="font-weight:600">' + esc((i.firstName + ' ' + i.lastName).trim() || '—') + '</div><div class="small muted">' + esc(i.company || i.id) + '</div></td>' +
+          '<td class="nowrap"><div>' + esc(i.email) + '</div><div class="small muted">' + esc(i.phone) + '</div></td><td class="tier">' + esc(i.tier || '—') + '</td>' +
+          '<td>' + list(i.categories).map(c => '<span class="tag">' + esc(c) + '</span>').join('') + '</td><td class="small">' + esc(list(i.markets).join(', ')) + '</td>' +
+          '<td class="small nowrap">' + (isNum(i.minPrice) || isNum(i.maxPrice) ? short$(i.minPrice || 0) + ' – ' + (isNum(i.maxPrice) && i.maxPrice !== '' ? short$(i.maxPrice) : 'any') : '<span class="muted">—</span>') + '<div class="muted">' + esc(list(i.propertyTypes).join(', ')) + '</div></td>' +
+          '<td>' + statusPill(i.status) + (i.optOut ? ' <span class="tag" style="color:#FF9A95">Opted out</span>' : '') + '</td><td class="right">' + (i.dealsReceived || 0) + '<div class="small muted">' + (i.lastSent ? ago(i.lastSent) : '') + '</div></td></tr>').join('') +
+        '</tbody></table></div>'
+        : '<div class="card empty"><h4>' + (S.investors.length ? 'No investors match these filters' : 'Build your investor network') + '</h4>' + (S.investors.length ? '' : 'Import your existing list from Google Sheets or add investors one by one.<div class="row" style="justify-content:center;margin-top:14px"><button class="btn primary" data-go="import">Import from Google Sheets</button><button class="btn" data-act="newInvestor">Add Investor</button></div>') + '</div>');
+  },
+  mount() {
+    const s = $('#invQ');
+    if (s) s.addEventListener('input', debounce(e => { S.inv.q = e.target.value; const pos = e.target.selectionStart; render(); const n = $('#invQ'); n.focus(); n.setSelectionRange(pos, pos); }, 250));
+  }
+};
+const uniq = arr => { const seen = {}; return arr.filter(x => { const k = lc(x); if (!x || seen[k]) return false; seen[k] = 1; return true; }); };
+
+function investorModal(id) {
+  const i = id ? S.investors.find(x => x.id === id) : { status: 'Active', tier: '', categories: '', markets: '', propertyTypes: '' };
+  if (!i) return;
+  const body = '<form id="invForm" autocomplete="off"><div class="grid g3">' +
+    field('First name', inp('firstName', i.firstName)) + field('Last name', inp('lastName', i.lastName)) + field('Company', inp('company', i.company)) +
+    field('Email *', inp('email', i.email, 'email', 'required')) + field('Phone', inp('phone', i.phone, 'tel')) + field('Tier', sel('tier', i.tier, uniq(L().tiers.concat(i.tier ? [i.tier] : [])), '—')) +
+    '</div><div class="stack" style="margin-top:16px">' +
+    field('Categories', chips('categories', L().categories, i.categories) + '<input type="text" data-chipextra="categories" placeholder="Other categories (comma separated)" style="margin-top:8px">') +
+    field('Preferred markets', (L().markets.length ? chips('markets', L().markets, i.markets) : chips('markets', [], i.markets)) + '<input type="text" data-chipextra="markets" placeholder="Other markets / cities / zips (comma separated)" style="margin-top:8px">') +
+    field('Property types', chips('propertyTypes', L().propertyTypes, i.propertyTypes)) +
+    '<div class="grid g3">' + field('Min price', moneyInp('minPrice', i.minPrice)) + field('Max price', moneyInp('maxPrice', i.maxPrice)) + field('Status', sel('status', i.status, L().investorStatuses)) + '</div>' +
+    field('Buying criteria', area('criteria', i.criteria, 'rows="2" placeholder="e.g. 3/2 SFR under $200K, light rehab, 70% rule, cash close in 14 days"')) +
+    field('Notes', area('notes', i.notes, 'rows="2"')) +
+    chk('optOut', i.optOut, 'Opted out of deal emails (never send)') + '</div></form>' +
+    (id ? '<div style="margin-top:22px"><div class="section-title">History</div><div id="invHistory" class="small muted"><span class="spinner"></span></div></div>' : '');
+  const foot = (id ? '<span class="small muted" style="margin-right:auto">' + esc(i.id) + ' · added ' + fmtDate(i.dateAdded) + ' · ' + esc(i.source || '') + '</span>' : '') +
+    '<button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn primary" data-act="saveInvestor" data-id="' + esc(id || '') + '">Save Investor</button>';
+  openModal(id ? 'Edit Investor' : 'Add Investor', body, foot, {
+    mount() {
+      if (id) api('getInvestorHistory', id).then(h => {
+        const el = $('#invHistory'); if (!el) return;
+        el.innerHTML = (h.sends.length ? '<div style="margin-bottom:8px">Received <b style="color:var(--text)">' + h.sends.length + '</b> deals: ' + h.sends.slice(0, 15).map(s => '<a data-go="deal" data-id="' + esc(s.dealId) + '" style="cursor:pointer">' + esc(s.property) + '</a> (' + fmtDate(s.sentAt) + ')').join(', ') + '</div>' : '<div>No deals received yet.</div>') +
+          (h.responses.length ? '<div>Responses: ' + h.responses.slice(0, 15).map(r => esc(r.type) + ' — ' + esc(r.property || r.dealId) + ' (' + fmtDate(r.received) + ')').join('; ') + '</div>' : '');
+      }).catch(fail);
+    }
+  });
+}
+
+async function saveInvestorModal(id) {
+  const form = $('#invForm');
+  const data = formData(form);
+  ['categories', 'markets', 'propertyTypes'].forEach(g => {
+    const extra = $('[data-chipextra="' + g + '"]', form);
+    data[g] = uniq(chipVals(g, form).concat(extra ? list(extra.value) : [])).join(', ');
+  });
+  if (id) data.id = id;
+  try {
+    const saved = await api('saveInvestor', data);
+    const ix = S.investors.findIndex(x => x.id === saved.id);
+    if (ix > -1) S.investors[ix] = saved; else S.investors.push(saved);
+    closeModal(); toast('Saved ' + esc(saved.firstName || saved.email) + '.'); render();
+  } catch (e) { fail(e); }
+}
+
+async function bulk(changes, label) {
+  const ids = Array.from(S.selected);
+  try {
+    const r = await api('updateInvestors', ids, changes);
+    S.investors = r.investors; toast(label + ' — ' + r.updated + ' investors updated.'); render();
+  } catch (e) { fail(e); }
+}
+
+// ---------- import ----------
+const IMPORT_LABELS = { fullName: 'Full name (split into first/last)', firstName: 'First name', lastName: 'Last name', company: 'Company', email: 'Email *', phone: 'Phone', tier: 'Tier', categories: 'Categories', markets: 'Preferred markets', propertyTypes: 'Property types', minPrice: 'Min price', maxPrice: 'Max price', criteria: 'Buying criteria', status: 'Status (active/inactive)', notes: 'Notes' };
+VIEWS.import = {
+  html() {
+    const m = S.imp;
+    let h = '<div class="card" style="margin-bottom:18px"><div class="hd"><h3>1 · Choose your Google Sheet</h3></div><div class="bd"><div class="grid" style="grid-template-columns:2fr 1fr auto;align-items:end">' +
+      field('Google Sheets link or ID', '<input type="url" id="impUrl" value="' + esc(m.url) + '" placeholder="https://docs.google.com/spreadsheets/d/…">', 'Leave blank to import from a tab inside this database spreadsheet. The sheet must be viewable by ' + esc(S.settings.user) + '.') +
+      field('Tab name', m.preview ? sel('impTab', m.preview.tab, m.preview.tabs) : '<input type="text" id="impTab" value="' + esc(m.tab) + '" placeholder="First tab">') +
+      '<button class="btn primary" data-act="impPreview" style="margin-bottom:22px">' + (m.preview ? 'Reload' : 'Load Sheet') + '</button></div></div></div>';
+    if (m.preview) {
+      const p = m.preview;
+      const colOpts = [['', '— not imported —']].concat(p.headers.map((hh, i) => [String(i), hh || 'Column ' + (i + 1)]));
+      h += '<div class="card" style="margin-bottom:18px"><div class="hd"><h3>2 · Match columns</h3><span class="muted small" style="margin-left:auto">' + esc(p.spreadsheetName) + ' / ' + esc(p.tab) + ' · ' + p.totalRows + ' rows · header row ' + p.headerRow + '</span></div><div class="bd"><div class="grid g4" id="impMap">' +
+        p.fields.map(f => field(IMPORT_LABELS[f], sel('map_' + f, p.mapping[f] !== undefined ? String(p.mapping[f]) : '', colOpts))).join('') + '</div></div>' +
+        '<div class="bd" style="padding-top:0"><div class="section-title">Sample rows</div><div class="table-wrap" style="max-height:260px"><table class="t"><thead><tr>' + p.headers.map(hh => '<th>' + esc(hh) + '</th>').join('') + '</tr></thead><tbody>' +
+        p.sample.map(r => '<tr>' + r.map(c => '<td class="small">' + esc(c) + '</td>').join('') + '</tr>').join('') + '</tbody></table></div></div></div>' +
+        '<div class="card"><div class="hd"><h3>3 · Import</h3></div><div class="bd"><div class="grid g4" style="align-items:end">' +
+        field('Default tier (if blank)', sel('impTier', '', L().tiers, '—')) + field('Add category to all', sel('impCat', '', L().categories, '—')) +
+        '<div>' + chk('impUpdate', true, 'Update investors that already exist (matched by email)') + '</div>' +
+        '<button class="btn primary" data-act="impRun" id="impRun">' + icon('upload') + 'Import ' + p.totalRows + ' rows</button></div>' +
+        (m.result ? '<div class="confirm-box test" style="margin-top:18px;border-color:var(--green-600);background:var(--green-900)"><h4>Import complete</h4>' +
+          '<b>' + m.result.added + '</b> added · <b>' + m.result.updated + '</b> updated · ' + m.result.skipped + ' already existed (skipped) · ' + m.result.duplicatesInFile + ' duplicates in sheet · ' + m.result.invalid.length + ' invalid emails' +
+          (m.result.invalid.length ? '<div class="small muted" style="margin-top:8px">Invalid: ' + m.result.invalid.map(x => 'row ' + x.row + ' (' + esc(x.value) + ')').join(', ') + '</div>' : '') +
+          '<div style="margin-top:12px"><button class="btn sm" data-go="investors">View investors →</button></div></div>' : '') + '</div></div>';
+    }
+    return h;
+  }
+};
+
+// ---------- responses ----------
+VIEWS.responses = {
+  html() {
+    if (!S.responses) return '<div class="loading"><span class="spinner"></span> Loading responses…</div>';
+    const f = S.respFilter;
+    const rows = S.responses.filter(r => (!f.deal || r.dealId === f.deal) && (!f.type || r.type === f.type) && (!f.followUp || r.followUp === f.followUp));
+    const dealOpts = uniq(S.responses.map(r => r.dealId).filter(Boolean));
+    return '<div class="toolbar">' +
+      '<select data-change="respFilter" name="deal"><option value="">All deals</option>' + dealOpts.map(id => { const d = S.deals.find(x => x.id === id); return '<option value="' + esc(id) + '"' + (f.deal === id ? ' selected' : '') + '>' + esc(id + (d ? ' · ' + d.address : '')) + '</option>'; }).join('') + '</select>' +
+      '<select data-change="respFilter" name="type"><option value="">All types</option>' + L().responseTypes.map(t => '<option' + (f.type === t ? ' selected' : '') + '>' + t + '</option>').join('') + '</select>' +
+      '<select data-change="respFilter" name="followUp"><option value="">All follow-up</option>' + L().followUpStatuses.map(t => '<option' + (f.followUp === t ? ' selected' : '') + '>' + t + '</option>').join('') + '</select>' +
+      '<div style="flex:1"></div><span class="small muted">' + rows.length + ' responses</span>' +
+      '<button class="btn" data-act="scanInbox">' + icon('inbox') + 'Scan Inbox Now</button><button class="btn primary" data-act="logResponse">' + icon('plus') + 'Log Response</button></div>' +
+      responsesTable(rows, true);
+  },
+  mount() { if (!S.responses) api('listResponses').then(r => { S.responses = r; if (S.view === 'responses') render(); }).catch(fail); }
+};
+
+function logResponseModal(dealId) {
+  const deals = S.deals.filter(d => d.status !== 'Sold' || d.id === dealId);
+  const body = '<form id="respForm"><div class="grid g2">' +
+    field('Deal *', sel('dealId', dealId || '', deals.map(d => [d.id, d.id + ' · ' + d.address]), 'Select deal…')) +
+    field('Investor', sel('investorId', '', S.investors.slice().sort((a, b) => lc(a.firstName + a.lastName).localeCompare(lc(b.firstName + b.lastName))).map(i => [i.id, ((i.firstName + ' ' + i.lastName).trim() || i.company) + ' · ' + i.email]), 'Not in database / enter below')) +
+    field('Name (if not in database)', inp('investorName', '')) + field('Email (if not in database)', inp('investorEmail', '', 'email')) +
+    field('Response type', sel('type', 'Interested', L().responseTypes)) + field('Offer amount', moneyInp('offerAmount', '')) +
+    field('Follow-up status', sel('followUp', 'New', L().followUpStatuses)) + '<div></div>' +
+    '</div><div class="stack" style="margin-top:14px">' + field('Message / details', area('message', '', 'rows="3" placeholder="Called — wants to walk it Thursday, has POF."')) + field('Internal notes', area('notes', '', 'rows="2"')) + '</div></form>';
+  openModal('Log Investor Response', body, '<button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn primary" data-act="saveResponse">Save Response</button>');
+}
+
+// ---------- jobs ----------
+VIEWS.jobs = {
+  html() {
+    if (!S.jobs) return '<div class="loading"><span class="spinner"></span> Loading…</div>';
+    return '<div class="toolbar"><span class="muted">Every distribution, test or live, with delivery counts. Individual recipients are on each deal\'s tracking page and in the <i>Distribution Log</i> sheet.</span><div style="flex:1"></div><button class="btn" data-act="refreshJobs">' + icon('refresh') + 'Refresh</button></div>' + jobsTable(S.jobs, true);
+  },
+  mount() { if (!S.jobs) api('listJobs').then(j => { S.jobs = j; if (S.view === 'jobs') render(); }).catch(fail); }
+};
+
+// ---------- settings ----------
+VIEWS.settings = {
+  html() {
+    const st = S.settings, v = st.values, D = st.descriptions;
+    const f = (k, label, type) => field(label, type === 'area' ? area(k, v[k], 'rows="3"') : type === 'bool' ? sel(k, /^true$/i.test(v[k]) ? 'TRUE' : 'FALSE', [['TRUE', 'Yes'], ['FALSE', 'No']]) : inp(k, v[k], type || 'text'), esc(D[k] || ''));
+    return '<form id="setForm"><div class="grid g2" style="align-items:start"><div class="stack">' +
+      '<div class="card" style="border-color:' + (st.testMode ? 'rgba(232,181,58,.45)' : 'rgba(217,83,79,.5)') + '"><div class="hd"><h3>Sending Mode</h3><span style="margin-left:auto" class="mode-pill ' + (st.testMode ? 'test' : 'live') + '"><span class="dot"></span>' + (st.testMode ? 'Test mode' : 'Live') + '</span></div><div class="bd stack">' +
+      '<div class="muted">' + (st.testMode ? 'Test mode is <b style="color:var(--amber)">ON</b>. Distributions run end-to-end but every email is redirected to the test address below (max ' + esc(v.TEST_MODE_MAX_EMAILS) + ' per distribution). No investor is contacted.' : 'Live mode is <b style="color:#FF8A84">ON</b>. Distributions email real investors after you type SEND to confirm.') + '</div>' +
+      '<div class="grid g2">' + f('TEST_EMAIL', 'Test email address', 'email') + f('TEST_MODE_MAX_EMAILS', 'Max test emails per distribution', 'number') + '</div>' +
+      (st.testMode ? '<button type="button" class="btn danger" data-act="goLive">Switch to LIVE mode…</button>' : '<button type="button" class="btn" data-act="goTest" style="border-color:var(--amber);color:var(--amber)">Switch back to Test mode</button>') +
+      '</div></div>' +
+      '<div class="card"><div class="hd"><h3>Company & Contact</h3></div><div class="bd stack">' + f('COMPANY_NAME', 'Company name') + '<div class="grid g2">' + f('CONTACT_NAME', 'Dispositions contact') + f('CONTACT_PHONE', 'Phone', 'tel') + '</div><div class="grid g2">' + f('CONTACT_EMAIL', 'Contact email', 'email') + f('WEBSITE', 'Website') + '</div>' + f('COMPANY_ADDRESS', 'Mailing address *') + f('LOGO_URL', 'Logo image URL', 'url') + '</div></div>' +
+      '<div class="card"><div class="hd"><h3>Investor Lists</h3></div><div class="bd stack">' + f('TIERS', 'Tiers') + f('CATEGORIES', 'Categories', 'area') + f('PROPERTY_TYPES', 'Property types', 'area') + f('MARKETS', 'Markets', 'area') + '</div></div>' +
+      '</div><div class="stack">' +
+      '<div class="card"><div class="hd"><h3>Email</h3></div><div class="bd stack"><div class="grid g2">' + f('SENDER_NAME', 'From name') + f('REPLY_TO', 'Reply-To address', 'email') + '</div>' + f('FROM_ALIAS', 'Send-as alias (optional)', 'email') + f('SUBJECT_TEMPLATE', 'Subject line') +
+      '<div class="grid g3">' + f('EMAIL_PHOTO_COUNT', 'Photos in email', 'number') + f('SHARE_MEDIA_LINKS', 'Share gallery link', 'bool') + f('SHOW_ASSIGNMENT_DEFAULT', 'Show assignment price', 'bool') + '</div>' + f('DISCLAIMER', 'Disclaimer', 'area') + '</div></div>' +
+      '<div class="card"><div class="hd"><h3>Response Tracking</h3></div><div class="bd stack"><div class="muted small">Scans this Gmail inbox for investor replies to deal emails (matched by the deal ID in the subject), logs them as responses, and automatically opts out anyone who replies UNSUBSCRIBE.</div>' +
+      f('RESPONSE_LOOKBACK_DAYS', 'Look back (days)', 'number') +
+      '<div class="row">' + (st.autoTracking ? '<span class="tag" style="color:var(--accent-2)">Auto-tracking ON · every 15 min</span><button type="button" class="btn sm" data-act="autoTrack" data-val="off">Turn off</button>' : '<span class="tag">Auto-tracking off</span><button type="button" class="btn sm primary" data-act="autoTrack" data-val="on">Turn on</button>') +
+      '<button type="button" class="btn sm" data-act="scanInbox">Scan now</button></div></div></div>' +
+      '<div class="card"><div class="hd"><h3>System</h3></div><div class="bd small stack"><div>Signed in as <b>' + esc(st.user) + '</b></div><div>Gmail quota remaining today: <b>' + (st.quota >= 0 ? st.quota : 'unknown') + '</b> <span class="muted">(Gmail: ~100/day, Google Workspace: ~1,500/day — larger lists are queued automatically)</span></div><div><a href="' + esc(st.spreadsheetUrl) + '" target="_blank">Open database spreadsheet ↗</a></div><div class="muted">Version ' + esc(st.version) + '</div></div></div>' +
+      '<button type="submit" class="btn primary" style="width:100%;padding:13px">Save Settings</button>' +
+      '</div></div></form>';
+  },
+  mount() {
+    $('#setForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      try { S.settings = await api('saveSettings', formData(e.target)); toast('Settings saved.'); render(); } catch (err) { fail(err); }
+    });
+  }
+};
+
+// ============================================================
+// ACTIONS (event delegation)
+// ============================================================
+const ACT = {
+  closeModal,
+  chip: el => el.classList.toggle('on'),
+  dealFilter: el => { S.dealFilter = el.dataset.val; render(); },
+  distribute: el => openDistribute(el.dataset.id),
+  saveAndSend: () => saveDealForm(true),
+  pickVideo: () => $('#videoInput').click(),
+  removePending: el => { S.pendingPhotos.splice(+el.dataset.i, 1); renderPhotos(); },
+  removePhoto: async el => {
+    if (!confirm('Remove this photo? It will be moved to Drive trash.')) return;
+    try { await api('removeDealPhoto', S.params.id, el.dataset.id); S.photoPreviews = S.photoPreviews.filter(p => p.id !== el.dataset.id); syncDealPhotos(); renderPhotos(); } catch (e) { fail(e); }
+  },
+  coverPhoto: async el => {
+    try { await api('setCoverPhoto', S.params.id, el.dataset.id); const p = S.photoPreviews.find(x => x.id === el.dataset.id); S.photoPreviews = [p].concat(S.photoPreviews.filter(x => x !== p)); syncDealPhotos(); renderPhotos(); } catch (e) { fail(e); }
+  },
+  trackTab: el => { S.trackTab = el.dataset.val; render(); },
+  setStatus: el => {
+    const s = el.dataset.val, id = el.dataset.id, d = S.deals.find(x => x.id === id);
+    if (s === 'Available') return doStatus(id, s, {});
+    openModal('Mark ' + esc(d.address) + ' as ' + s,
+      '<div class="grid g2" id="stForm">' + field(s === 'Sold' ? 'Buyer' : 'Buyer (under contract with)', inp('buyer', d.buyer, 'text', 'list="buyerList"') + '<datalist id="buyerList">' + S.investors.map(i => '<option value="' + esc(((i.firstName + ' ' + i.lastName).trim() || i.company) + ' (' + i.email + ')') + '">').join('') + '</datalist>') +
+      (s === 'Sold' ? field('Final sale / assignment price', moneyInp('soldPrice', d.soldPrice || d.askingPrice)) : '') + '</div>',
+      '<button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn primary" data-act="confirmStatus" data-id="' + esc(id) + '" data-val="' + s + '">Mark ' + s + '</button>');
+  },
+  confirmStatus: el => { const v = formData($('#stForm')); closeModal(); doStatus(el.dataset.id, el.dataset.val, v); },
+  sendTest: async el => {
+    const to = ($('#testTo') || {}).value;
+    el.disabled = true; const old = el.innerHTML; el.innerHTML = '<span class="spinner"></span> Sending…';
+    try { const r = await api('sendTestEmail', el.dataset.id, to); toast('Test email sent to <b>' + esc(r.sentTo) + '</b>.'); S.settings.quota = r.quota; renderChrome(); } catch (e) { fail(e); }
+    el.disabled = false; el.innerHTML = old;
+  },
+  distMode: el => { DIST.audience.mode = el.dataset.val; renderDist(); },
+  pickAll: () => { $$('[data-change="pickInv"]').forEach(c => { if (!DIST.audience.investorIds.includes(c.value)) DIST.audience.investorIds.push(c.value); }); renderDist(); },
+  pickNone: () => { DIST.audience.investorIds = []; renderDist(); },
+  distNext: () => { syncSegments(); if (DIST.preview && !DIST.preview.count) return toast('No investors match this audience.', 'warn'); DIST.step = 2; renderDist(); },
+  distBack: () => { DIST.step = Math.max(1, DIST.step - 1); renderDist(); },
+  distPrepare: async el => {
+    el.disabled = true; el.innerHTML = '<span class="spinner"></span> Preparing…';
+    try { DIST.prepared = await api('prepareDistribution', DIST.deal.id, DIST.audience); DIST.step = 3; renderDist(); }
+    catch (e) { fail(e); el.disabled = false; el.textContent = 'Next: Review & Confirm →'; }
+  },
+  distConfirm: () => distConfirm(),
+  closeDistDone: () => { closeModal(); render(); },
+  closeDistTrack: () => { const id = DIST.deal.id; closeModal(); go('deal', { id }); },
+  cancelJob: async el => {
+    if (!confirm('Cancel all emails in this distribution that have not been sent yet?')) return;
+    try { await api('cancelJob', el.dataset.id); toast('Remaining emails cancelled.'); S.jobs = null; S.tracking = null; render(); } catch (e) { fail(e); }
+  },
+  refreshJobs: () => { S.jobs = null; render(); },
+  newInvestor: () => investorModal(null),
+  editInvestor: (el, e) => { if (e.target.closest('[data-stop]')) return; investorModal(el.dataset.id); },
+  saveInvestor: el => saveInvestorModal(el.dataset.id),
+  bulkStatus: el => bulk({ status: el.dataset.val }, el.dataset.val === 'Active' ? 'Activated' : 'Deactivated'),
+  bulkDelete: async () => {
+    const typed = prompt('Permanently delete ' + S.selected.size + ' investors? Deactivating keeps their history.\n\nType DELETE to confirm:');
+    if (typed == null) return;
+    try { const r = await api('deleteInvestors', Array.from(S.selected), typed); S.investors = r.investors; S.selected.clear(); toast(r.deleted + ' investors deleted.'); render(); } catch (e) { fail(e); }
+  },
+  clearSel: () => { S.selected.clear(); render(); },
+  impPreview: async el => {
+    S.imp.url = $('#impUrl').value.trim();
+    const tabEl = $('#impTab') || $('[name=impTab]');
+    const tab = S.imp.preview && S.imp.url === S.imp.lastUrl ? (tabEl ? tabEl.value : '') : ($('#impTab') ? $('#impTab').value.trim() : '');
+    el.disabled = true; el.innerHTML = '<span class="spinner"></span> Loading…';
+    try { S.imp.preview = await api('previewImport', S.imp.url, tab); S.imp.lastUrl = S.imp.url; S.imp.result = null; render(); }
+    catch (e) { fail(e); el.disabled = false; el.textContent = 'Load Sheet'; }
+  },
+  impRun: async el => {
+    const p = S.imp.preview, mapping = {};
+    p.fields.forEach(f => { const v = $('[name=map_' + f + ']').value; if (v !== '') mapping[f] = Number(v); });
+    if (mapping.email === undefined) return toast('Map the Email column first.', 'warn');
+    const opts = { defaultTier: $('[name=impTier]').value, defaultCategory: $('[name=impCat]').value, updateExisting: $('[name=impUpdate]').checked };
+    el.disabled = true; el.innerHTML = '<span class="spinner"></span> Importing…';
+    try {
+      S.imp.result = await api('runImport', S.imp.url, p.tab, mapping, opts);
+      S.investors = await api('listInvestors');
+      toast('Import complete: ' + S.imp.result.added + ' added, ' + S.imp.result.updated + ' updated.'); render();
+    } catch (e) { fail(e); el.disabled = false; el.textContent = 'Import'; }
+  },
+  scanInbox: async el => {
+    const old = el.innerHTML; el.disabled = true; el.innerHTML = '<span class="spinner"></span> Scanning…';
+    try {
+      const r = await api('scanInboxForResponses');
+      toast('Inbox scanned: <b>' + r.found + '</b> new responses' + (r.unsubscribed ? ', ' + r.unsubscribed + ' unsubscribed' : '') + '.');
+      S.responses = null; S.tracking = null; await refreshData();
+    } catch (e) { fail(e); el.disabled = false; el.innerHTML = old; }
+  },
+  logResponse: el => logResponseModal(el.dataset.id),
+  saveResponse: async () => {
+    const v = formData($('#respForm'));
+    try { await api('logResponse', v); closeModal(); toast('Response logged.'); S.responses = null; S.tracking = null; await refreshData(); } catch (e) { fail(e); }
+  },
+  respNote: async el => {
+    const r = (S.responses || (S.tracking && S.tracking.responses) || []).find(x => x.id === el.dataset.id);
+    const n = prompt('Notes for this response:', r ? r.notes : '');
+    if (n == null) return;
+    try { const u = await api('updateResponse', el.dataset.id, { notes: n }); patchResponse(u); render(); } catch (e) { fail(e); }
+  },
+  goLive: () => {
+    openModal('Switch to LIVE mode',
+      '<div class="confirm-box live"><h4>Emails will go to real investors</h4><p>In live mode, distributions send an individual email to every investor in the audience you choose. Each distribution still requires typing SEND to confirm.</p>' +
+      '<p class="small muted">Before going live: set your mailing address and contact info, send yourself a test email, and run at least one test distribution.</p>' +
+      '<div class="field"><label>Type <b style="color:#fff;letter-spacing:2px">GO LIVE</b> to confirm</label><input type="text" class="confirm-input" id="goLiveText" style="max-width:260px" autocomplete="off"></div></div>',
+      '<button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn danger" data-act="confirmGoLive">Switch to Live</button>');
+    $('#goLiveText').focus();
+  },
+  confirmGoLive: async () => {
+    try { S.settings = await api('setTestMode', false, $('#goLiveText').value); closeModal(); toast('Live mode is ON.', 'warn'); render(); } catch (e) { fail(e); }
+  },
+  goTest: async () => { try { S.settings = await api('setTestMode', true, ''); toast('Test mode is ON.'); render(); } catch (e) { fail(e); } },
+  autoTrack: async el => {
+    try { S.settings = await api(el.dataset.val === 'on' ? 'enableAutoTracking' : 'disableAutoTracking'); toast('Auto-tracking ' + (el.dataset.val === 'on' ? 'enabled' : 'disabled') + '.'); render(); } catch (e) { fail(e); }
+  }
+};
+
+function patchResponse(u) {
+  [S.responses, S.tracking && S.tracking.responses].forEach(arr => { if (!arr) return; const i = arr.findIndex(x => x.id === u.id); if (i > -1) arr[i] = u; });
+}
+
+function syncSegments() {
+  if (!DIST || DIST.audience.mode !== 'segments') return;
+  DIST.audience.tiers = chipVals('d_tiers'); DIST.audience.categories = chipVals('d_categories'); DIST.audience.markets = chipVals('d_markets');
+}
+
+async function doStatus(id, status, extra) {
+  try {
+    const d = await api('setDealStatus', id, status, extra);
+    replaceDeal(d); toast(esc(d.address) + ' marked <b>' + status + '</b>.');
+    api('getDashboard').then(x => { S.dashboard = x; }).catch(() => {});
+    render();
+  } catch (e) { fail(e); }
+}
+
+const CHANGE = {
+  showTest: el => { S.showTest = el.checked; render(); },
+  respFollow: async el => { try { const u = await api('updateResponse', el.dataset.id, { followUp: el.value }); patchResponse(u); toast('Follow-up updated.'); } catch (e) { fail(e); } },
+  respFilter: el => { S.respFilter[el.name] = el.value; render(); },
+  pickInv: el => { const ids = DIST.audience.investorIds; if (el.checked) { if (!ids.includes(el.value)) ids.push(el.value); } else DIST.audience.investorIds = ids.filter(x => x !== el.value); const s = $('.pick-list + .row .muted'); if (s) s.textContent = DIST.audience.investorIds.length + ' selected'; refreshAudience(); },
+  distOpt: el => { DIST.audience[el.name] = el.checked; refreshAudience(); },
+  invFilter: el => { S.inv[el.name] = el.value; render(); },
+  selAll: el => { (S._invShown || []).forEach(i => el.checked ? S.selected.add(i.id) : S.selected.delete(i.id)); render(); },
+  selOne: el => { el.checked ? S.selected.add(el.value) : S.selected.delete(el.value); render(); },
+  bulkTier: el => el.value && bulk({ tier: el.value }, 'Tier set to ' + el.value),
+  bulkAddCat: el => el.value && bulk({ addCategory: el.value }, 'Added ' + el.value),
+  bulkRemoveCat: el => el.value && bulk({ removeCategory: el.value }, 'Removed ' + el.value)
+};
+
+document.addEventListener('click', e => {
+  const g = e.target.closest('[data-go]');
+  if (g && !e.target.closest('[data-act]')) {
+    e.preventDefault();
+    if ($('.overlay')) closeModal();
+    if (g.dataset.go === 'dashboard') api('getDashboard').then(d => { S.dashboard = d; if (S.view === 'dashboard') render(); }).catch(() => {});
+    if (g.dataset.go === 'responses') S.responses = null;
+    if (g.dataset.go === 'jobs') S.jobs = null;
+    return go(g.dataset.go, g.dataset.id ? { id: g.dataset.id } : {});
+  }
+  const a = e.target.closest('[data-act]');
+  if (a && ACT[a.dataset.act]) {
+    if (a.tagName === 'A' || a.tagName === 'BUTTON') e.preventDefault();
+    ACT[a.dataset.act](a, e);
+    if (a.dataset.act === 'chip' && DIST && DIST.step === 1) { syncSegments(); refreshAudience(); }
+    return;
+  }
+  if (e.target.matches('[data-overlay]')) closeModal();
+});
+document.addEventListener('change', e => {
+  const c = e.target.closest('[data-change]');
+  if (c && CHANGE[c.dataset.change]) CHANGE[c.dataset.change](c, e);
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('.overlay')) closeModal(); });
+
+// ---------- boot ----------
+api('getBootstrap').then(b => {
+  S.settings = b.settings; S.investors = b.investors; S.deals = b.deals; S.dashboard = b.dashboard;
+  $('#boot').remove();
+  render();
+}).catch(e => {
+  $('#boot').innerHTML = '<div class="inner" style="max-width:520px"><div class="word">SameDay<span>Investments</span></div><p style="color:#FF9A95">' + esc(e.message || e) + '</p><p class="muted small">If this is a new install, open the Google Sheet → Extensions → Apps Script and run <b>setup</b> once, then reload.</p></div>';
+});
+
+})();
+</script>
