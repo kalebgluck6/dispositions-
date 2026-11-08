@@ -40,14 +40,23 @@ Google Sheet (database)                 Apps Script web app (private to you)
 2. Open **Extensions → Apps Script**.
 
 ### 2. Add the code
-**Option A: copy and paste (no tools needed)**
+**Option A: copy and paste 3 files (easiest)**
+The [`dist/`](dist) folder has the whole app in 3 files:
+1. Project Settings ⚙ → tick **"Show 'appsscript.json' manifest file in editor"**, then replace `appsscript.json` with [`dist/appsscript.json`](dist/appsscript.json).
+2. Replace everything in `Code.gs` with [`dist/Code.gs`](dist/Code.gs).
+3. Click **+ → HTML**, name it `Index`, and replace its contents with [`dist/Index.html`](dist/Index.html).
+4. Click 💾 Save.
+
+(Rebuild these after code changes with `node tools/build-bundle.js`.)
+
+**Option B: copy and paste the individual source files**
 1. In the Apps Script editor, open **Project Settings ⚙** and tick **"Show 'appsscript.json' manifest file in editor"**.
 2. Replace the contents of `appsscript.json` with [`src/appsscript.json`](src/appsscript.json). If you're not in the US Eastern time zone, change `timeZone`.
 3. For each `.gs` file in [`src/`](src), click **+ → Script**, give it the same name (without `.gs`), and paste in the contents:
    `Code`, `Config`, `Data`, `Settings`, `Investors`, `Import`, `Deals`, `Email`, `Distribution`, `Responses`. Delete the default `Code.gs` contents first.
 4. For each `.html` file, click **+ → HTML** and use the same name: `Index`, `Styles`, `App`.
 
-**Option B: clasp (command line)**
+**Option C: clasp (command line)**
 ```bash
 npm install -g @google/clasp
 clasp login
