@@ -188,10 +188,11 @@
   const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   root.Utilities = {
     getUuid: () => (root.crypto && root.crypto.randomUUID ? root.crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); })),
-    formatDate: (d, tz, f) => f
-      .replace(/yyyy/g, d.getFullYear()).replace(/MMMM/g, '\u0001').replace(/MM/g, pad(d.getMonth() + 1)).replace(/dd/g, pad(d.getDate()))
-      .replace(/HH/g, pad(d.getHours())).replace(/mm/g, pad(d.getMinutes())).replace(/ss/g, pad(d.getSeconds()))
-      .replace(/\bd\b/g, d.getDate()).replace(/\u0001/g, MONTHS[d.getMonth()]),
+    formatDate: (d, tz, f) => f.replace(/yyyy|MMMM|MMM|MM|dd|d|HH|hh|h|mm|ss|a/g, tok => ({
+      yyyy: d.getFullYear(), MMMM: MONTHS[d.getMonth()], MMM: MONTHS[d.getMonth()].slice(0, 3), MM: pad(d.getMonth() + 1),
+      dd: pad(d.getDate()), d: d.getDate(), HH: pad(d.getHours()), hh: pad(d.getHours() % 12 || 12), h: d.getHours() % 12 || 12,
+      mm: pad(d.getMinutes()), ss: pad(d.getSeconds()), a: d.getHours() < 12 ? 'AM' : 'PM'
+    })[tok]),
     base64Encode: b64enc,
     base64Decode: b64dec,
     newBlob: (bytes, mime, name) => new Blob(bytes, mime, name),
@@ -218,7 +219,10 @@
         const m = th.getMessages()[0];
         if (/subject:unsubscribe/i.test(q)) return /unsubscribe/i.test(m.getSubject());
         const ids = (q.match(/subject:"([^"]+)"/g) || []).map(s => s.slice(9, -1));
-        return ids.some(x => m.getSubject().indexOf(x) > -1);
+        if (ids.length) return ids.some(x => m.getSubject().indexOf(x) > -1);
+        const phrases = (q.match(/(^|[\s(])"([^"]+)"/g) || []).map(s => s.replace(/^[\s(]*"/, '').slice(0, -1).toLowerCase());
+        const text = (m.getSubject() + ' ' + m.getPlainBody()).toLowerCase();
+        return phrases.some(ph => text.indexOf(ph) > -1);
       });
     },
     getAliases: () => []
@@ -249,12 +253,53 @@
     Permission: { VIEW: 'VIEW' }
   };
 
+  // ---------- Forms ----------
+  MOCK.forms = {};
+  function FormItem(form, kind) { this.kind = kind; this.title = ''; this.required = false; this.choices = []; form.items.push(this); }
+  ['setTitle', 'setRequired', 'setHelpText', 'setValidation', 'setChoiceValues', 'showOtherOption'].forEach(fn => {
+    FormItem.prototype[fn] = function (v) {
+      if (fn === 'setTitle') this.title = v; if (fn === 'setRequired') this.required = v; if (fn === 'setChoiceValues') this.choices = v;
+      return this;
+    };
+  });
+  FormItem.prototype.getTitle = function () { return this.title; };
+  function Form(title) {
+    this._id = id('form'); this.title = title; this.items = []; this.responses = [];
+    MOCK.forms[this._id] = this;
+    MOCK.files[this._id] = new File(new Blob([], 'application/vnd.google-apps.form', title));
+    MOCK.files[this._id]._id = this._id;
+  }
+  Form.prototype = {
+    getId() { return this._id; }, getPublishedUrl() { return 'https://docs.google.com/forms/d/e/' + this._id + '/viewform'; },
+    getEditUrl() { return 'https://docs.google.com/forms/d/' + this._id + '/edit'; },
+    getResponses() { return this.responses.slice(); },
+    addTextItem() { return new FormItem(this, 'text'); }, addParagraphTextItem() { return new FormItem(this, 'paragraph'); },
+    addCheckboxItem() { return new FormItem(this, 'checkbox'); }, addMultipleChoiceItem() { return new FormItem(this, 'choice'); },
+    /** test helper: answers = { 'Question title': value } */
+    _submit(answers) {
+      const rid = id('resp'), ts = new Date();
+      this.responses.push({
+        getId: () => rid, getTimestamp: () => ts,
+        getItemResponses: () => Object.keys(answers).map(k => ({ getItem: () => ({ getTitle: () => k }), getResponse: () => answers[k] }))
+      });
+    }
+  };
+  ['setDescription', 'setConfirmationMessage', 'setAllowResponseEdits', 'setProgressBar', 'setRequireLogin', 'setTitle'].forEach(fn => { Form.prototype[fn] = function () { return this; }; });
+  File.prototype.moveTo = function (folder) { this._folder = folder; return this; };
+  root.FormApp = {
+    create: (t) => new Form(t),
+    openById: (fid) => { if (!MOCK.forms[fid]) throw new Error('No form'); return MOCK.forms[fid]; },
+    createTextValidation: () => chainable({ build: () => ({}) })
+  };
+
   // ---------- Script / Html / Logger ----------
   root.ScriptApp = {
     newTrigger(fn) {
       const t = { fn, kind: '' };
       const b = {
         timeBased: () => b, after: (ms) => { t.kind = 'after ' + ms; return b; }, everyMinutes: (n) => { t.kind = 'every ' + n + 'm'; return b; },
+        everyDays: (n) => { t.kind = 'every ' + n + 'd'; return b; }, atHour: (h) => { t.kind += ' @' + h; return b; },
+        forForm: () => b, onFormSubmit: () => { t.kind = 'formSubmit'; return b; },
         create: () => { const tr = { getHandlerFunction: () => fn, kind: t.kind }; MOCK.triggers.push(tr); return tr; }
       };
       return b;

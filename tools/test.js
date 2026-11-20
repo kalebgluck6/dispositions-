@@ -344,4 +344,156 @@ step('deleteInvestors requires DELETE', () => {
   assert(!g.listInvestors().some(i => i.id === kevin.id));
 });
 
+
+// ---------------- New buyer intake ----------------
+step('signup form: created with buy-box questions + instant trigger', () => {
+  g.saveSettings({ MARKETS: 'Atlanta Metro, Macon, Savannah' });
+  const st = g.createBuyerSignupForm();
+  assert(st.form && st.form.url.includes('viewform'));
+  assert(M.triggers.some(t => t.getHandlerFunction() === 'onBuyerFormSubmit'), 'form submit trigger');
+  const form = M.forms[st.form.id];
+  const titles = form.items.map(i => i.title);
+  ['First name', 'Email', 'Markets you buy in', 'Property types', 'How do you invest?', 'Maximum purchase price', 'Describe your buy box', 'Deal alerts'].forEach(t => assert(titles.includes(t), t));
+  assert.strictEqual(form.items.find(i => i.title === 'Markets you buy in').choices.length, 3);
+  assert(form.items.find(i => i.title === 'Deal alerts').required, 'consent required');
+  assert.strictEqual(g.createBuyerSignupForm().form.id, st.form.id, 'idempotent');
+});
+
+step('form submissions land in the review queue, never active', () => {
+  const st = g.getIntakeStatus();
+  const form = M.forms[st.form.id];
+  form._submit({ 'First name': 'jamal', 'Last name': 'BROOKS', 'Email': 'Jamal@BrooksBuys.com', 'Mobile phone': '404-555-0111',
+    'Markets you buy in': ['Atlanta Metro', 'Macon'], 'Property types': ['Single Family'], 'How do you invest?': ['Fix & Flip'],
+    'Minimum purchase price': '$90,000', 'Maximum purchase price': '220k', 'Describe your buy box': '3/2, light rehab', 'How do you fund purchases?': 'Cash',
+    'Deal alerts': ['Yes'] });
+  g.onBuyerFormSubmit();
+  const j = g.listInvestors().find(i => i.email === 'jamal@brooksbuys.com');
+  assert(j, 'added');
+  assert.strictEqual(j.status, 'Pending Review');
+  assert.strictEqual(j.firstName, 'jamal');
+  assert.strictEqual(j.lastName, 'Brooks');
+  assert.strictEqual(j.maxPrice, 220000);
+  assert.strictEqual(j.markets, 'Atlanta Metro, Macon');
+  assert(/Funding: Cash/.test(j.notes));
+  assert.strictEqual(j.source, 'Signup form');
+  g.onBuyerFormSubmit();
+  assert.strictEqual(g.listInvestors().filter(i => i.email === 'jamal@brooksbuys.com').length, 1, 'not added twice');
+  const d = g.listDeals().find(x => x.status === 'Available');
+  assert(!g.previewAudience(d.id, { mode: 'all' }).recipients.some(r => r.email === 'jamal@brooksbuys.com'), 'pending buyers never get deals');
+});
+
+let cashSrc;
+step('cash-buyer export: grouped by owner, financed + old sales excluded, buy box from purchases', () => {
+  cashSrc = new M.Spreadsheet('PropStream Export');
+  const t = cashSrc.insertSheet('Recent Cash Sales');
+  const recent = (d) => { const x = new Date(Date.now() - d * 86400000); return (x.getMonth() + 1) + '/' + x.getDate() + '/' + x.getFullYear(); };
+  t.data = [
+    ['Address', 'City', 'State', 'Zip', 'Property Type', 'Owner 1 Full Name', 'Mailing Address', 'Mailing City', 'Mailing State', 'Mailing Zip', 'Last Sale Date', 'Last Sale Amount', 'Open Mortgage Balance', 'Email 1', 'Phone 1'],
+    ['12 ELM ST', 'DECATUR', 'GA', '30030', 'SFR', 'PEACH STATE HOMES LLC', '500 MAIN ST', 'ATLANTA', 'GA', '30303', recent(20), '$150,000', '0', '', ''],
+    ['88 PINE AVE', 'MACON', 'GA', '31204', 'Single Family Residential', 'PEACH STATE HOMES LLC', '500 MAIN ST', 'ATLANTA', 'GA', '30303', recent(60), '$95,000', '0', '', ''],
+    ['4 OAK CT', 'TUCKER', 'GA', '30084', 'Duplex', 'CARTER, DENISE', '9 RIVER RD', 'TUCKER', 'GA', '30084', recent(10), '$210,000', '', 'denise.carter@gmail.com', '(770) 555-0123'],
+    ['77 FINANCED LN', 'DECATUR', 'GA', '30030', 'SFR', 'MORTGAGE MIKE', '1 BANK ST', 'DECATUR', 'GA', '30030', recent(5), '$300,000', '240000', 'mike@x.com', ''],
+    ['3 OLD RD', 'DECATUR', 'GA', '30030', 'SFR', 'OLD SALE OWNER', '3 OLD RD', 'DECATUR', 'GA', '30030', recent(800), '$80,000', '0', 'old@x.com', '']
+  ];
+  const prev = g.previewBuyerSource('cash', cashSrc.getId(), 'Recent Cash Sales');
+  assert.strictEqual(prev.buyers, 2, JSON.stringify(prev));
+  assert.strictEqual(prev.columns.ownerName, 'Owner 1 Full Name');
+  assert.strictEqual(prev.columns.mailAddr, 'Mailing Address');
+  g.saveSettings({ INTAKE_CASH_ON: 'TRUE', INTAKE_CASH_URL: cashSrc.getUrl(), INTAKE_CASH_TAB: 'Recent Cash Sales' });
+  M.sent = [];
+  const r = g.runBuyerIntake();
+  assert.strictEqual(r.results.cash.status, 'ok', JSON.stringify(r.results.cash));
+  assert.strictEqual(r.results.cash.added, 2);
+  const inv = g.listInvestors();
+  const llc = inv.find(i => i.company === 'Peach State Homes LLC');
+  assert(llc, 'entity owner kept as company');
+  assert.strictEqual(llc.status, 'Pending Review');
+  assert.strictEqual(llc.email, '');
+  assert.strictEqual(llc.purchaseCount, 2);
+  assert.strictEqual(llc.markets, 'Decatur, Macon');
+  assert.strictEqual(llc.propertyTypes, 'Single Family');
+  assert.strictEqual(llc.minPrice, 75000);
+  assert.strictEqual(llc.maxPrice, 180000);
+  assert(/12 Elm St, Decatur — \$150,000/.test(llc.purchases), llc.purchases);
+  assert.strictEqual(llc.mailingAddress, '500 Main St, Atlanta, GA 30303');
+  const denise = inv.find(i => i.email === 'denise.carter@gmail.com');
+  assert.strictEqual(denise.firstName, 'Denise'); assert.strictEqual(denise.lastName, 'Carter');
+  assert.strictEqual(denise.propertyTypes, 'Multi-Family (2-4)');
+  assert(!inv.some(i => i.email === 'mike@x.com' || i.email === 'old@x.com'), 'financed / old sales excluded');
+  assert(M.sent.some(m => /new buyers? to review/.test(m.subject)), 'daily summary email');
+  // a new purchase by the same LLC updates its history instead of duplicating
+  t.data.push(['9 NEW ST', 'DECATUR', 'GA', '30030', 'SFR', 'PEACH STATE HOMES LLC', '500 MAIN ST', 'ATLANTA', 'GA', '30303', recent(1), '$160,000', '0', '', '']);
+  const r2 = g.runBuyerIntake();
+  assert.strictEqual(r2.results.cash.added, 0);
+  assert.strictEqual(r2.results.cash.updated, 1);
+  assert.strictEqual(g.listInvestors().filter(i => i.company === 'Peach State Homes LLC').length, 1);
+  assert.strictEqual(g.listInvestors().find(i => i.company === 'Peach State Homes LLC').purchaseCount, 3);
+});
+
+step('approving requires an email; approved buyers start receiving deals', () => {
+  const inv = g.listInvestors();
+  const llc = inv.find(i => i.company === 'Peach State Homes LLC');
+  const denise = inv.find(i => i.email === 'denise.carter@gmail.com');
+  const r = g.updateInvestors([llc.id, denise.id], { status: 'Active' });
+  assert.strictEqual(r.updated, 1);
+  assert.strictEqual(r.skippedNoEmail.length, 1);
+  throwsMsg(() => g.saveInvestor(Object.assign({}, llc, { status: 'Active' })), /email address is required/);
+  const saved = g.saveInvestor(Object.assign({}, llc, { email: 'acq@peachstatehomes.com' }));
+  assert.strictEqual(saved.status, 'Pending Review');
+  assert.strictEqual(saved.purchaseCount, 3, 'editing keeps purchase history');
+  const d = g.listDeals().find(x => x.status === 'Available');
+  assert(g.previewAudience(d.id, { mode: 'all' }).recipients.some(x => x.email === 'denise.carter@gmail.com'));
+});
+
+step('Google Sheet sync adds only new buyers each day', () => {
+  const vs = new M.Spreadsheet('VA Buyer Adds');
+  const t = vs.insertSheet('New');
+  t.data = [['Name', 'Email', 'Phone', 'Buyer Type', 'Areas', 'Budget'],
+    ['Omar Haddad', 'omar@haddadhomes.com', '404-555-0190', 'Buy & Hold', 'Atlanta Metro', '$175k'],
+    ['Marcus Reed', 'marcus@reedcapital.com', '', '', '', ''],
+    ['No Email Guy', '', '555-0000', '', '', '']];
+  g.saveSettings({ INTAKE_SHEET_ON: 'TRUE', INTAKE_SHEET_URL: vs.getUrl(), INTAKE_SHEET_TAB: 'New' });
+  const r = g.runBuyerIntake();
+  assert.strictEqual(r.results.sheet.added, 1, JSON.stringify(r.results.sheet));
+  assert.strictEqual(r.results.sheet.duplicate, 1);
+  assert.strictEqual(r.results.sheet.skipped, 1);
+  const omar = g.listInvestors().find(i => i.email === 'omar@haddadhomes.com');
+  assert.strictEqual(omar.status, 'Pending Review'); assert.strictEqual(omar.maxPrice, 175000);
+  const r2 = g.runBuyerIntake();
+  assert.strictEqual(r2.results.sheet.added + r2.results.sheet.duplicate + r2.results.sheet.skipped, 0, 'rows only processed once');
+});
+
+step('Gmail: buyer inquiries become leads with parsed buy box; deal replies ignored', () => {
+  M.inbox = [
+    { id: 'g1', from: 'Lisa Nguyen <lisa@nguyenventures.com>', subject: 'Please add me to your buyers list', body: 'Hi! I buy single family and duplexes in Atlanta Metro and Macon, $80k-$250k, light rehab flips. Cash buyer. Cell 678-555-0142.\n\nOn Mon, X wrote:\n> old' },
+    { id: 'g2', from: 'marcus@reedcapital.com', subject: 'Re: deal [SDI-2026-0001]', body: 'Send me deals like this, cash buyer here' },
+    { id: 'g3', from: 'spam@ads.com', subject: 'Grow your business', body: 'Buy our SEO' }
+  ];
+  const r = g.runBuyerIntake();
+  assert.strictEqual(r.results.gmail.added, 1, JSON.stringify(r.results.gmail));
+  const lisa = g.listInvestors().find(i => i.email === 'lisa@nguyenventures.com');
+  assert.strictEqual(lisa.firstName, 'Lisa'); assert.strictEqual(lisa.lastName, 'Nguyen');
+  assert.strictEqual(lisa.phone, '678-555-0142');
+  assert.strictEqual(lisa.minPrice, 80000); assert.strictEqual(lisa.maxPrice, 250000);
+  assert.strictEqual(lisa.markets, 'Atlanta Metro, Macon');
+  assert(/Single Family/.test(lisa.propertyTypes) && /Multi-Family \(2-4\)/.test(lisa.propertyTypes), lisa.propertyTypes);
+  assert(/Fix & Flip/.test(lisa.categories) && /Cash Buyer/.test(lisa.categories), lisa.categories);
+  assert.strictEqual(lisa.status, 'Pending Review');
+  assert.strictEqual(g.runBuyerIntake().results.gmail.added, 0, 'same email not processed twice');
+});
+
+step('daily schedule + intake status + log are serializable', () => {
+  g.enableDailyIntake(7);
+  assert(M.triggers.some(t => t.getHandlerFunction() === 'runBuyerIntake' && /1d @7/.test(t.kind)));
+  const st = g.getIntakeStatus();
+  noDates(st, 'intake');
+  assert.strictEqual(st.daily, true);
+  assert(st.pending >= 3);
+  assert(st.log.length >= 6);
+  assert.strictEqual(g.getDashboard().investors.pending, st.pending);
+  g.disableDailyIntake();
+  assert(!g.getIntakeStatus().daily);
+  assert(!M.isLocked());
+});
+
 console.log('\n' + passed + ' passed' + (process.exitCode ? ', SOME FAILED' : '') + '\n');

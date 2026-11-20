@@ -11,6 +11,7 @@ The system runs on **Google Sheets** (the database) and **Google Apps Script** (
 | **SEND TO INVESTOR NETWORK** | Sends to all active investors, chosen tiers/categories/markets, or investors you pick by hand. It can limit the send to investors whose buy box matches the deal and skip anyone who already received it. You preview the email, send yourself a test, then confirm. |
 | **Privacy** | Every investor gets their **own** email with a single recipient. There's no CC, BCC or group send, so no investor ever sees another investor's address. |
 | **Tracking** | Records which investors received each deal and when, logs replies automatically from your Gmail inbox (*Interested*, *Offer* with the amount, *Not interested*, *Unsubscribe*), and has a follow-up pipeline for each response. Deals can be marked **Available / Pending / Sold**. |
+| **New buyers, daily** | Every morning the system finds new buyers from four sources: your VIP buyer signup form, a Google Sheet you or a VA keep updated, a cash-buyer export from public records, and Gmail inquiries. It fills in their buy box and puts them in a **review queue**. Nobody receives a deal until you approve them. |
 | **Safety** | **Test mode is on by default.** To go live you type `GO LIVE`, and every live send also needs you to type `SEND`. |
 
 ---
@@ -110,6 +111,24 @@ In **Import Investors**, paste the link to your existing investor Google Sheet a
 
 Everything is also visible directly in the Google Sheet, so you can filter, sort and build pivot tables there.
 
+## New Buyers (daily intake)
+
+Open **New Buyers** in the app. Turn on the sources you want and click **Turn on daily intake**, choosing the hour it runs (6 AM by default).
+
+| Source | How it finds buyers | Buy box comes from |
+|---|---|---|
+| **VIP Buyer Signup Form** | Click **Create my VIP buyer signup form**, then share the link on Facebook groups, Instagram, your website, your email signature and at meetups. Signups are added the moment they submit. | Their answers: markets, property types, strategy, price range, buy box, funding. They also tick a box consenting to deal emails. |
+| **Google Sheet Sync** | Paste the link to any sheet you or a VA keep adding buyers to. It needs an Email column. Each day only new rows are added. | Whatever columns the sheet has (same automatic matching as Import). |
+| **Cash Buyers from Public Records** | Export recent cash sales for your area from PropStream, BatchLeads, PropertyRadar, DealMachine or county records into a Google Sheet and paste its link. Click **Check sheet** to confirm the columns were recognized. Financed purchases and sales older than the window are ignored. Sales are grouped by owner, so an LLC that bought 3 houses becomes one buyer. | What they actually bought: the cities, a price range (lowest purchase −20% to highest +20%), property types, and a list of the purchases. |
+| **Gmail Buyer Inquiries** | Finds emails asking to join your list ("add me to your buyers list", "send me deals", "cash buyer"…). You can edit the phrases. Replies to your deal emails are excluded; those go to Responses. | Read from the email: phone number, your markets that are mentioned, property types, price range ("$80k–$250k", "under 200k") and strategy (flip, rental, BRRRR, cash). |
+
+* Every new buyer is added with status **Pending Review**. Pending buyers never receive deals.
+* **Approve** (optionally with a tier) or **Reject** each buyer, or select several at once. Approval requires an email address. Public-records owners often have none, so they show **⚠ Needs email**: skip trace them, click ✏️ and add the email, then approve.
+* Duplicates are caught by email, or for owners without email by name plus mailing address. When a known cash buyer makes another purchase, their purchase history is updated instead of creating a second record.
+* On days when new buyers are found, you get a summary email listing them, with a button to review. You can turn this off.
+* Everything is recorded in the **Buyer Intake Log** sheet.
+* **Direct data-provider connection:** the cash-buyer source currently reads an export sheet. A direct API connection to a provider such as BatchData, PropertyRadar or ATTOM can be added once you pick one and have an API key. That would also do skip tracing automatically.
+
 ## The data (Google Sheet tabs)
 
 | Tab | One row per… | Key columns |
@@ -118,6 +137,7 @@ Everything is also visible directly in the Google Sheet, so you can filter, sort
 | **Deals** | deal | Deal ID (`SDI-2026-0001`), status, address, numbers, details, photo IDs, video, times distributed, investors reached, responses, interested, buyer, sold price/date, internal notes |
 | **Distribution Jobs** | click of SEND | mode (TEST/LIVE), audience, total / sent / failed / simulated, status |
 | **Distribution Log** | investor per send | investor, email, mode, status (Queued / Sent / Failed / Simulated / Skipped / Cancelled), sent at |
+| **Buyer Intake Log** | buyer found by the daily intake | source, name, email, result (Added / Already in database / Updated / Skipped), details |
 | **Responses** | reply or logged call | deal, investor, type, offer amount, message, source (Email auto / Manual), follow-up status, notes |
 | **Settings** | setting | everything on the Settings page |
 
@@ -136,7 +156,7 @@ You can add your own columns to any tab, because the app finds columns by header
 You don't need any of this to *use* the system. It's for changing the code.
 
 ```bash
-npm test                 # runs the backend against an in-memory Apps Script mock (22 end-to-end checks)
+npm test                 # runs the backend against an in-memory Apps Script mock (29 end-to-end checks)
 npm run preview          # builds preview/index.html — the real UI + real server code with sample data, nothing is emailed
 ```
 

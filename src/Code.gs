@@ -26,6 +26,7 @@ function onOpen() {
     .addItem('Run / repair setup', 'setup')
     .addItem('Scan inbox for investor replies now', 'scanInboxForResponses')
     .addItem('Resume queued distributions', 'runQueuedDistributions')
+    .addItem('Find new buyers now', 'runBuyerIntake')
     .addToUi();
 }
 
@@ -53,7 +54,7 @@ function setup() {
   if (ss) props.setProperty('SPREADSHEET_ID', ss.getId());
   _ss = null;
   ensureSettings_();
-  [SHEET.INVESTORS, SHEET.DEALS, SHEET.JOBS, SHEET.LOG, SHEET.RESPONSES].forEach(function (n) { getSheet_(n); });
+  [SHEET.INVESTORS, SHEET.DEALS, SHEET.JOBS, SHEET.LOG, SHEET.RESPONSES, SHEET.INTAKE].forEach(function (n) { getSheet_(n); });
   var book = ss_();
   var blank = book.getSheetByName('Sheet1');
   if (blank && blank.getLastRow() === 0 && book.getSheets().length > 1) book.deleteSheet(blank);
@@ -95,7 +96,8 @@ function getDashboard() {
     investors: {
       total: investors.length,
       active: investors.filter(function (i) { return (str_(i.status) || 'Active') === 'Active' && !bool_(i.optOut); }).length,
-      optedOut: investors.filter(function (i) { return bool_(i.optOut); }).length
+      optedOut: investors.filter(function (i) { return bool_(i.optOut); }).length,
+      pending: investors.filter(function (i) { return str_(i.status) === PENDING_REVIEW; }).length
     },
     deals: dealCounts,
     emails30d: log.filter(function (l) { return l.mode === 'LIVE' && l.status === 'Sent' && t(l.sentAt) > since; }).length,

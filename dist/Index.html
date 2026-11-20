@@ -338,6 +338,7 @@ function toast(msg, type) {
   $('#toasts').appendChild(el);
   setTimeout(() => { el.style.opacity = '0'; el.style.transition = '.3s'; setTimeout(() => el.remove(), 300); }, type === 'err' ? 7000 : 4000);
 }
+const confirmSafe = msg => { try { const r = window.confirm(msg); return r === undefined ? true : r; } catch (e) { return true; } };
 const fail = e => { console.error(e); toast(esc(e && e.message || e), 'err'); };
 
 // ---------- icons ----------
@@ -368,7 +369,7 @@ const S = {
   form: null, pendingPhotos: [], photoPreviews: null,
   tracking: null, trackTab: 'recipients', showTest: false,
   responses: null, respFilter: { deal: '', type: '', followUp: '' },
-  jobs: null, imp: { url: '', tab: '' }
+  jobs: null, imp: { url: '', tab: '' }, intake: null, intakeSel: new Set()
 };
 const L = () => S.settings.lists;
 
@@ -377,12 +378,13 @@ const NAV = [
   ['deals', 'Deals', 'deals'],
   ['dealForm', 'Submit Deal', 'plus'],
   ['investors', 'Investors', 'users'],
+  ['intake', 'New Buyers', 'star'],
   ['import', 'Import Investors', 'upload'],
   ['responses', 'Responses', 'inbox'],
   ['jobs', 'Distributions', 'log'],
   ['settings', 'Settings', 'gear']
 ];
-const TITLES = { dashboard: 'Dashboard', deals: 'Deals', dealForm: 'Submit a Deal', deal: 'Deal', investors: 'Investor Network', import: 'Import Investors', responses: 'Responses & Interested Buyers', jobs: 'Distribution History', settings: 'Settings' };
+const TITLES = { dashboard: 'Dashboard', deals: 'Deals', dealForm: 'Submit a Deal', deal: 'Deal', investors: 'Investor Network', import: 'Import Investors', responses: 'Responses & Interested Buyers', jobs: 'Distribution History', settings: 'Settings', intake: 'New Buyers' };
 
 function go(view, params) {
   S.view = view; S.params = params || {};
@@ -396,7 +398,9 @@ function renderChrome() {
   const newResp = (S.dashboard && S.dashboard.responses30d) || 0;
   $('#nav').innerHTML = NAV.map(([v, label, ic]) => {
     const active = S.view === v || (v === 'deals' && S.view === 'deal') || (v === 'dealForm' && S.view === 'dealForm' && !S.params.id) || (v === 'deals' && S.view === 'dealForm' && S.params.id);
-    const badge = v === 'investors' ? '<span class="badge">' + S.investors.filter(i => i.status === 'Active' && !i.optOut).length + '</span>' : '';
+    const nPending = S.investors.filter(i => i.status === 'Pending Review').length;
+    const badge = v === 'investors' ? '<span class="badge">' + S.investors.filter(i => i.status === 'Active' && !i.optOut).length + '</span>'
+      : v === 'intake' && nPending ? '<span class="badge" style="background:var(--amber)">' + nPending + '</span>' : '';
     return '<a data-go="' + v + '" class="' + (active ? 'active' : '') + '">' + icon(ic) + esc(label) + badge + '</a>';
   }).join('');
   const st = S.settings;
@@ -474,6 +478,7 @@ VIEWS.dashboard = {
       '<button class="btn" data-act="newInvestor">' + icon('users') + 'Add Investor</button>' +
       '<button class="btn" data-go="import">' + icon('upload') + 'Import from Google Sheets</button>' +
       '<button class="btn" data-act="scanInbox">' + icon('inbox') + 'Scan Inbox for Replies</button>' +
+      (d.investors.pending ? '<button class="btn" data-go="intake" style="border-color:var(--amber);color:var(--amber)">' + icon('star') + d.investors.pending + ' new buyer' + (d.investors.pending === 1 ? '' : 's') + ' to review</button>' : '') +
       '</div>' +
       '<div class="grid" style="grid-template-columns:1.4fr 1fr">' +
       '<div class="card"><div class="hd"><h3>Ready to Distribute</h3><div class="spacer" style="flex:1"></div><a data-go="deals" class="small" style="cursor:pointer">All deals →</a></div>' +
@@ -950,7 +955,7 @@ VIEWS.investors = {
     const allTiers = uniq(L().tiers.concat(S.investors.map(i => i.tier).filter(Boolean)));
     const nSel = S.selected.size;
     return '<div class="toolbar"><input type="search" id="invQ" placeholder="Search name, email, criteria…" value="' + esc(f.q) + '">' +
-      '<select data-change="invFilter" name="status">' + [['', 'All statuses'], ['Active', 'Active'], ['Inactive', 'Inactive'], ['Opted out', 'Opted out']].map(o => '<option value="' + o[0] + '"' + (f.status === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>' +
+      '<select data-change="invFilter" name="status">' + [['', 'All statuses'], ['Active', 'Active'], ['Pending Review', 'Pending review'], ['Inactive', 'Inactive'], ['Opted out', 'Opted out']].map(o => '<option value="' + o[0] + '"' + (f.status === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>' +
       '<select data-change="invFilter" name="tier"><option value="">All tiers</option>' + allTiers.map(t => '<option' + (f.tier === t ? ' selected' : '') + '>' + esc(t) + '</option>').join('') + '</select>' +
       '<select data-change="invFilter" name="category"><option value="">All categories</option>' + allCats.map(t => '<option' + (f.category === t ? ' selected' : '') + '>' + esc(t) + '</option>').join('') + '</select>' +
       (allMk.length ? '<select data-change="invFilter" name="market"><option value="">All markets</option>' + allMk.map(t => '<option' + (f.market === t ? ' selected' : '') + '>' + esc(t) + '</option>').join('') + '</select>' : '') +
@@ -990,6 +995,8 @@ function investorModal(id) {
     field('Property types', chips('propertyTypes', L().propertyTypes, i.propertyTypes)) +
     '<div class="grid g3">' + field('Min price', moneyInp('minPrice', i.minPrice)) + field('Max price', moneyInp('maxPrice', i.maxPrice)) + field('Status', sel('status', i.status, L().investorStatuses)) + '</div>' +
     field('Buying criteria', area('criteria', i.criteria, 'rows="2" placeholder="e.g. 3/2 SFR under $200K, light rehab, 70% rule, cash close in 14 days"')) +
+    field('Mailing address', inp('mailingAddress', i.mailingAddress)) +
+    (i.purchases ? '<div class="field"><label>Recent cash purchases (' + esc(i.purchaseCount) + ')</label><div class="small" style="line-height:1.6;color:var(--text-2)">' + esc(i.purchases) + '</div></div>' : '') +
     field('Notes', area('notes', i.notes, 'rows="2"')) +
     chk('optOut', i.optOut, 'Opted out of deal emails (never send)') + '</div></form>' +
     (id ? '<div style="margin-top:22px"><div class="section-title">History</div><div id="invHistory" class="small muted"><span class="spinner"></span></div></div>' : '');
@@ -1018,7 +1025,7 @@ async function saveInvestorModal(id) {
     const saved = await api('saveInvestor', data);
     const ix = S.investors.findIndex(x => x.id === saved.id);
     if (ix > -1) S.investors[ix] = saved; else S.investors.push(saved);
-    closeModal(); toast('Saved ' + esc(saved.firstName || saved.email) + '.'); render();
+    closeModal(); toast('Saved ' + esc(saved.firstName || saved.company || saved.email) + '.'); render();
   } catch (e) { fail(e); }
 }
 
@@ -1027,6 +1034,93 @@ async function bulk(changes, label) {
   try {
     const r = await api('updateInvestors', ids, changes);
     S.investors = r.investors; toast(label + ' — ' + r.updated + ' investors updated.'); render();
+  } catch (e) { fail(e); }
+}
+
+// ---------- new buyers (daily intake) ----------
+const SRC_HELP = {
+  form: 'Your branded "VIP Buyers List" Google Form. Share the link on Facebook groups, Instagram, your website, email signature and at meetups. Signups arrive instantly with their buy box.',
+  sheet: 'Any Google Sheet you or a VA keep adding buyers to (from calls, meetups, BiggerPockets, other lists). Needs an Email column. Each day only new rows are added.',
+  cash: 'Investors who recently bought with cash in your area. Export recent cash sales from PropStream, BatchLeads, PropertyRadar, DealMachine or your county records into a Google Sheet. Each day the system groups the sales by owner and builds their buy box from what they bought. Owners without an email are held until you add one (skip trace).',
+  gmail: 'People who email you asking to get on your list ("add me to your buyers list", "send me deals", "cash buyer"…). Their name, phone, markets, price range and strategy are read from the email.'
+};
+VIEWS.intake = {
+  html() {
+    const st = S.intake;
+    if (!st) return '<div class="loading"><span class="spinner"></span> Loading new buyers…</div>';
+    const v = S.settings.values;
+    const pending = S.investors.filter(i => i.status === 'Pending Review').sort((a, b) => String(b.dateAdded).localeCompare(String(a.dateAdded)));
+    const sel = S.intakeSel;
+    const last = st.lastResult || {};
+    const hours = Array.from({ length: 24 }, (_, h) => [String(h), (h % 12 || 12) + ':00 ' + (h < 12 ? 'AM' : 'PM')]);
+    let h = '<div class="card" style="margin-bottom:18px"><div class="bd row" style="gap:14px">' +
+      '<div style="flex:1;min-width:260px"><div style="font-family:var(--serif);font-size:22px">Daily buyer intake</div><div class="small muted">' +
+      (st.daily ? 'Runs every day at <b style="color:var(--text)">' + esc(hours[+v.INTAKE_HOUR || 0][1]) + '</b>. New buyers wait here for your approval and never receive deals until approved.' : 'Turn on the daily schedule to find new buyers automatically every morning.') +
+      (st.lastRun ? ' Last run ' + ago(st.lastRun) + '.' : '') + '</div></div>' +
+      '<select id="intakeHour" style="width:auto">' + hours.map(o => '<option value="' + o[0] + '"' + (o[0] === String(v.INTAKE_HOUR) ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>' +
+      (st.daily ? '<button class="btn" data-act="intakeDaily" data-val="off">Daily: ON · turn off</button>' : '<button class="btn primary" data-act="intakeDaily" data-val="on">Turn on daily intake</button>') +
+      '<button class="btn" data-act="intakeRun">' + icon('refresh') + 'Find new buyers now</button></div></div>';
+
+    // review queue
+    h += '<div class="card" style="margin-bottom:18px"><div class="hd"><h3>Waiting for your review</h3><span class="tag" style="color:var(--amber)">' + pending.length + '</span><div style="flex:1"></div>' +
+      (pending.length ? '<select id="approveTier" style="width:auto"><option value="">Approve with tier…</option>' + L().tiers.map(t => '<option>' + esc(t) + '</option>').join('') + '</select>' +
+        '<button class="btn sm primary" data-act="intakeApprove" ' + (sel.size ? '' : 'disabled') + '>Approve ' + (sel.size || '') + '</button><button class="btn sm danger" data-act="intakeReject" ' + (sel.size ? '' : 'disabled') + '>Reject ' + (sel.size || '') + '</button>' : '') + '</div>' +
+      (pending.length ? '<div style="overflow:auto"><table class="t"><thead><tr><th style="width:36px"><input type="checkbox" data-change="intakeSelAll"' + (pending.every(p => sel.has(p.id)) ? ' checked' : '') + '></th><th>Buyer</th><th>Contact</th><th>Buy box</th><th>Why they\'re a buyer</th><th></th></tr></thead><tbody>' +
+        pending.map(i => '<tr><td><input type="checkbox" data-change="intakeSel" value="' + esc(i.id) + '"' + (sel.has(i.id) ? ' checked' : '') + '></td>' +
+          '<td class="nowrap"><div style="font-weight:600">' + esc((i.firstName + ' ' + i.lastName).trim() || i.company) + '</div><div class="small muted">' + esc(i.firstName || i.lastName ? i.company : '') + '</div><span class="tag">' + esc(i.source) + '</span> <span class="small muted">' + ago(i.dateAdded) + '</span></td>' +
+          '<td class="nowrap">' + (i.email ? esc(i.email) : '<span style="color:var(--amber)">⚠ Needs email</span>') + '<div class="small muted">' + esc(i.phone) + '</div>' + (i.mailingAddress ? '<div class="small muted">' + esc(i.mailingAddress) + '</div>' : '') + '</td>' +
+          '<td class="small">' + (i.markets ? '<div>' + esc(i.markets) + '</div>' : '') + ((isNum(i.minPrice) && i.minPrice !== '') || (isNum(i.maxPrice) && i.maxPrice !== '') ? '<div>' + short$(i.minPrice || 0) + ' – ' + (i.maxPrice !== '' ? short$(i.maxPrice) : 'any') + '</div>' : '') +
+          '<div class="muted">' + esc(list(i.propertyTypes).join(', ')) + '</div><div>' + list(i.categories).map(c => '<span class="tag">' + esc(c) + '</span>').join('') + '</div></td>' +
+          '<td class="small" style="max-width:340px;color:var(--text-2)">' + esc(i.purchases || i.criteria || i.notes || '').slice(0, 260) + '</td>' +
+          '<td class="nowrap"><button class="btn sm primary" data-act="intakeOne" data-id="' + esc(i.id) + '" data-val="Active">Approve</button> <button class="btn sm ghost" data-act="editInvestor" data-id="' + esc(i.id) + '" title="Edit">' + icon('edit') + '</button> <button class="btn sm ghost" data-act="intakeOne" data-id="' + esc(i.id) + '" data-val="Inactive" title="Reject">✕</button></td></tr>').join('') +
+        '</tbody></table></div>'
+        : '<div class="empty"><h4>You\'re all caught up</h4>New buyers found by the sources below will appear here for approval.</div>') + '</div>';
+
+    // sources
+    const srcCard = (k, title, body) => {
+      const on = st.sources.find(x => x.key === k).on, r = last[k];
+      const res = !r ? '' : r.status === 'off' ? '' : r.status === 'error' ? '<div class="small" style="color:#FF9A95;margin-top:10px">Last run error: ' + esc(r.note) + '</div>'
+        : '<div class="small muted" style="margin-top:10px">Last run: <b style="color:var(--text)">' + (r.added || 0) + ' added</b>' + (r.updated ? ', ' + r.updated + ' updated' : '') + (r.duplicate ? ', ' + r.duplicate + ' already in database' : '') + (r.skipped ? ', ' + r.skipped + ' skipped' : '') + (r.note ? ' · ' + esc(r.note) : '') + '</div>';
+      return '<div class="card" data-src="' + k + '"><div class="hd"><h3>' + title + '</h3><div style="flex:1"></div><label class="check"><input type="checkbox" data-change="intakeToggle" data-key="' + esc(INTAKE_KEYS[k]) + '"' + (on ? ' checked' : '') + '> ' + (on ? 'On' : 'Off') + '</label></div>' +
+        '<div class="bd stack"><div class="small muted">' + SRC_HELP[k] + '</div>' + body + res + '</div></div>';
+    };
+    const cfg = (key, label, type, ph) => field(label, '<input type="' + (type || 'text') + '" data-cfg="' + key + '" value="' + esc(v[key]) + '" placeholder="' + esc(ph || '') + '">');
+    h += '<div class="grid g2" style="margin-bottom:18px;align-items:start">' +
+      srcCard('form', 'VIP Buyer Signup Form', st.form
+        ? '<div class="field"><label>Your public signup link (' + (st.form.responses || 0) + ' signups)</label><div class="row" style="flex-wrap:nowrap"><input type="text" readonly id="formUrl" value="' + esc(st.form.url) + '"><button class="btn sm" data-act="copyFormUrl">Copy</button></div></div>' +
+          '<div class="row"><a class="btn sm" href="' + esc(st.form.url) + '" target="_blank">Open form ↗</a>' + (st.form.editUrl ? '<a class="btn sm ghost" href="' + esc(st.form.editUrl) + '" target="_blank">Edit questions & colors ↗</a>' : '') + (st.formTrigger ? '<span class="small muted">Signups added instantly ✓</span>' : '') + '</div>'
+        : '<button class="btn primary" data-act="createForm">Create my VIP buyer signup form</button><div class="small muted">Asks for name, email, phone, markets, property types, strategy, price range, buy box, funding, and consent to receive deals.</div>') +
+      srcCard('sheet', 'Google Sheet Sync', cfg('INTAKE_SHEET_URL', 'Google Sheet link', 'url', 'https://docs.google.com/spreadsheets/d/…') + cfg('INTAKE_SHEET_TAB', 'Tab name', 'text', 'First tab') +
+        '<div class="row"><button class="btn sm primary" data-act="intakeSave" data-src="sheet">Save</button><button class="btn sm" data-act="intakeCheck" data-src="sheet">Check sheet</button></div><div class="small" id="check-sheet"></div>') +
+      srcCard('cash', 'Cash Buyers from Public Records', cfg('INTAKE_CASH_URL', 'Google Sheet with your cash-sales export', 'url', 'https://docs.google.com/spreadsheets/d/…') +
+        '<div class="grid g3">' + cfg('INTAKE_CASH_TAB', 'Tab name', 'text', 'First tab') + cfg('INTAKE_CASH_LOOKBACK_DAYS', 'Bought within (days)', 'number') + cfg('INTAKE_CASH_MIN_PURCHASES', 'Min. purchases', 'number') + '</div>' +
+        '<div class="row"><button class="btn sm primary" data-act="intakeSave" data-src="cash">Save</button><button class="btn sm" data-act="intakeCheck" data-src="cash">Check sheet</button></div><div class="small" id="check-cash"></div>') +
+      srcCard('gmail', 'Gmail Buyer Inquiries', field('Phrases that mean "add me as a buyer"', '<textarea data-cfg="INTAKE_GMAIL_KEYWORDS" rows="3">' + esc(v.INTAKE_GMAIL_KEYWORDS) + '</textarea>') +
+        '<div class="grid g2">' + cfg('INTAKE_GMAIL_DAYS', 'Look back (days)', 'number') + field('Daily summary email', '<select data-cfg="INTAKE_SUMMARY_EMAIL">' + [['TRUE', 'Yes, email me'], ['FALSE', 'No']].map(o => '<option value="' + o[0] + '"' + (String(v.INTAKE_SUMMARY_EMAIL).toUpperCase() === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>') + '</div>' +
+        '<div class="row"><button class="btn sm primary" data-act="intakeSave" data-src="gmail">Save</button></div>') +
+      '</div>';
+
+    // log
+    h += '<div class="card"><div class="hd"><h3>Intake activity</h3><span class="small muted" style="margin-left:auto">Full history in the "Buyer Intake Log" sheet</span></div>' +
+      (st.log.length ? '<div style="max-height:380px;overflow:auto"><table class="t"><thead><tr><th>When</th><th>Source</th><th>Buyer</th><th>Result</th><th>Details</th></tr></thead><tbody>' +
+        st.log.map(l => '<tr><td class="nowrap small">' + fmtDT(l.received) + '</td><td class="small">' + esc(l.source) + '</td><td>' + esc(l.name) + '<div class="small muted">' + esc(l.email) + '</div></td><td class="small" style="' + (/^Added/.test(l.result) ? 'color:var(--accent-2)' : /^Skipped/.test(l.result) ? 'color:var(--amber)' : '') + '">' + esc(l.result) + '</td><td class="small muted" style="max-width:320px">' + esc(l.details).slice(0, 160) + '</td></tr>').join('') + '</tbody></table></div>'
+        : '<div class="empty" style="padding:30px">Nothing yet. Turn on a source and click "Find new buyers now".</div>') + '</div>';
+    return h;
+  },
+  mount() { if (!S.intake) api('getIntakeStatus').then(st => { S.intake = st; if (S.view === 'intake') render(); }).catch(fail); }
+};
+const INTAKE_KEYS = { form: 'INTAKE_FORM_ON', sheet: 'INTAKE_SHEET_ON', cash: 'INTAKE_CASH_ON', gmail: 'INTAKE_GMAIL_ON' };
+
+async function intakeStatus(ids, status) {
+  const tier = status === 'Active' ? (($('#approveTier') || {}).value || '') : '';
+  const changes = { status }; if (tier) changes.tier = tier;
+  try {
+    const r = await api('updateInvestors', ids, changes);
+    S.investors = r.investors; ids.forEach(id => S.intakeSel.delete(id));
+    toast((status === 'Active' ? 'Approved ' : 'Rejected ') + r.updated + ' buyer' + (r.updated === 1 ? '' : 's') + '.' +
+      (r.skippedNoEmail && r.skippedNoEmail.length ? ' <b>' + r.skippedNoEmail.length + ' need an email first</b> (' + esc(r.skippedNoEmail.slice(0, 3).join(', ')) + ') — click ✏️ to add one.' : ''), r.skippedNoEmail && r.skippedNoEmail.length ? 'warn' : '');
+    api('getDashboard').then(d => { S.dashboard = d; }).catch(() => {});
+    render();
   } catch (e) { fail(e); }
 }
 
@@ -1135,6 +1229,52 @@ VIEWS.settings = {
 // ============================================================
 const ACT = {
   closeModal,
+  intakeRun: async el => {
+    const old = el.innerHTML; el.disabled = true; el.innerHTML = '<span class="spinner"></span> Finding buyers…';
+    try {
+      const st = await api('runBuyerIntakeNow');
+      S.intake = st; S.investors = await api('listInvestors');
+      const errs = Object.keys(st.run.results).filter(k => st.run.results[k].status === 'error');
+      toast('<b>' + st.run.added + '</b> new buyer' + (st.run.added === 1 ? '' : 's') + ' added for review.' + (errs.length ? ' ' + errs.length + ' source(s) had errors — see below.' : ''), errs.length ? 'warn' : '');
+      render();
+    } catch (e) { fail(e); el.disabled = false; el.innerHTML = old; }
+  },
+  intakeDaily: async el => {
+    try { S.intake = await api(el.dataset.val === 'on' ? 'enableDailyIntake' : 'disableDailyIntake', ($('#intakeHour') || {}).value); S.settings = await api('getSettings'); toast('Daily intake ' + (el.dataset.val === 'on' ? 'on' : 'off') + '.'); render(); } catch (e) { fail(e); }
+  },
+  createForm: async el => {
+    el.disabled = true; el.innerHTML = '<span class="spinner"></span> Creating form…';
+    try { S.intake = await api('createBuyerSignupForm'); S.settings = await api('getSettings'); toast('Your VIP buyer signup form is live.'); render(); } catch (e) { fail(e); el.disabled = false; el.textContent = 'Create my VIP buyer signup form'; }
+  },
+  copyFormUrl: () => {
+    const i = $('#formUrl'); i.select();
+    const done = () => toast('Signup link copied.');
+    if (navigator.clipboard) navigator.clipboard.writeText(i.value).then(done).catch(() => { try { document.execCommand('copy'); done(); } catch (e) { toast('Select the link and copy it.', 'warn'); } });
+    else { try { document.execCommand('copy'); done(); } catch (e) { toast('Select the link and copy it.', 'warn'); } }
+  },
+  intakeSave: async el => {
+    const card = el.closest('.card[data-src]'), vals = {};
+    $$('[data-cfg]', card).forEach(x => { vals[x.dataset.cfg] = x.value; });
+    try { S.settings = await api('saveSettings', vals); toast('Saved.'); } catch (e) { fail(e); }
+  },
+  intakeCheck: async el => {
+    const k = el.dataset.src, card = el.closest('.card[data-src]'), out = $('#check-' + k);
+    const url = $('[data-cfg$="_URL"]', card).value, tab = $('[data-cfg$="_TAB"]', card).value;
+    if (!url) return toast('Paste the Google Sheet link first.', 'warn');
+    out.innerHTML = '<span class="spinner"></span> Reading sheet…';
+    try {
+      const p = await api('previewBuyerSource', k, url, tab);
+      const cols = Object.keys(p.columns).map(c => esc(c) + ' ← "' + esc(p.columns[c]) + '"').join(', ');
+      out.innerHTML = '<div style="color:var(--accent-2)">✓ ' + esc(p.sheet) + ' · ' + p.rows + ' rows</div>' +
+        (k === 'cash' ? '<div class="muted">' + p.considered + ' qualifying cash sales → <b style="color:var(--text)">' + p.buyers + ' buyers</b></div>' +
+          (p.sample.length ? '<div class="muted" style="margin-top:6px">' + p.sample.map(x => esc(x.name) + ' (' + x.purchases + (x.purchases === 1 ? ' buy · ' : ' buys · ') + esc(x.markets) + ' · ' + esc(x.price) + ')').join('<br>') + '</div>' : '')
+          : (p.hasEmail ? '' : '<div style="color:#FF9A95">No Email column found — add one.</div>')) +
+        '<div class="muted" style="margin-top:6px">Columns read: ' + cols + '</div><div class="muted">Remember to click Save and turn the source On.</div>';
+    } catch (e) { out.innerHTML = '<span style="color:#FF9A95">' + esc(e.message) + '</span>'; }
+  },
+  intakeApprove: () => intakeStatus(Array.from(S.intakeSel), 'Active'),
+  intakeReject: () => { if (confirmSafe('Reject ' + S.intakeSel.size + ' buyers? They are set to Inactive and never receive deals.')) intakeStatus(Array.from(S.intakeSel), 'Inactive'); },
+  intakeOne: el => intakeStatus([el.dataset.id], el.dataset.val),
   chip: el => el.classList.toggle('on'),
   dealFilter: el => { S.dealFilter = el.dataset.val; render(); },
   distribute: el => openDistribute(el.dataset.id),
@@ -1267,6 +1407,12 @@ async function doStatus(id, status, extra) {
 }
 
 const CHANGE = {
+  intakeSel: el => { el.checked ? S.intakeSel.add(el.value) : S.intakeSel.delete(el.value); render(); },
+  intakeSelAll: el => { S.investors.filter(i => i.status === 'Pending Review').forEach(i => el.checked ? S.intakeSel.add(i.id) : S.intakeSel.delete(i.id)); render(); },
+  intakeToggle: async el => {
+    const vals = {}; vals[el.dataset.key] = el.checked ? 'TRUE' : 'FALSE';
+    try { S.settings = await api('saveSettings', vals); S.intake.sources.forEach(x => { if (INTAKE_KEYS[x.key] === el.dataset.key) x.on = el.checked; }); render(); } catch (e) { fail(e); }
+  },
   showTest: el => { S.showTest = el.checked; render(); },
   respFollow: async el => { try { const u = await api('updateResponse', el.dataset.id, { followUp: el.value }); patchResponse(u); toast('Follow-up updated.'); } catch (e) { fail(e); } },
   respFilter: el => { S.respFilter[el.name] = el.value; render(); },
@@ -1288,6 +1434,7 @@ document.addEventListener('click', e => {
     if (g.dataset.go === 'dashboard') api('getDashboard').then(d => { S.dashboard = d; if (S.view === 'dashboard') render(); }).catch(() => {});
     if (g.dataset.go === 'responses') S.responses = null;
     if (g.dataset.go === 'jobs') S.jobs = null;
+    if (g.dataset.go === 'intake') S.intake = null;
     return go(g.dataset.go, g.dataset.id ? { id: g.dataset.id } : {});
   }
   const a = e.target.closest('[data-act]');

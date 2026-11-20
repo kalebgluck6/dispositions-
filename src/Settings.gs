@@ -112,7 +112,7 @@ function getSettings() {
 function saveSettings(values) {
   return withLock_(function () {
     var allowed = DEFAULT_SETTINGS.map(function (d) { return d[0]; })
-      .filter(function (k) { return k !== 'TEST_MODE' && k !== 'DRIVE_FOLDER_ID'; });
+      .filter(function (k) { return ['TEST_MODE', 'DRIVE_FOLDER_ID', 'BUYER_FORM_ID', 'BUYER_FORM_URL'].indexOf(k) === -1; });
     if (values.TEST_EMAIL && !isEmail_(values.TEST_EMAIL)) throw new Error('Test email address is not valid.');
     if (values.REPLY_TO && !isEmail_(values.REPLY_TO)) throw new Error('Reply-To address is not valid.');
     Object.keys(values || {}).forEach(function (k) {

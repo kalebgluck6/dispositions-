@@ -20,6 +20,8 @@ function normalizeInvestor_(inv) {
     optOut: bool_(inv.optOut),
     notes: str_(inv.notes)
   };
+  // Only touch these when the caller sends them (the edit form doesn't send purchase history)
+  if (inv.mailingAddress !== undefined) out.mailingAddress = str_(inv.mailingAddress);
   return out;
 }
 
@@ -46,10 +48,12 @@ function listInvestors() {
 function saveInvestor(inv) {
   return withLock_(function () {
     var data = normalizeInvestor_(inv || {});
-    if (!isEmail_(data.email)) throw new Error('A valid email address is required.');
+    if (data.email ? !isEmail_(data.email) : data.status !== PENDING_REVIEW) {
+      throw new Error(data.email ? 'Enter a valid email address.' : 'An email address is required (only buyers pending review may be saved without one).');
+    }
     if (!data.firstName && !data.lastName && !data.company) throw new Error('Enter a name or company.');
     var table = readTable_(SHEET.INVESTORS);
-    var dup = table.rows.filter(function (r) {
+    var dup = data.email && table.rows.filter(function (r) {
       return String(r.email).toLowerCase() === data.email && r.id !== inv.id;
     })[0];
     if (dup) throw new Error('Another investor (' + investorName_(dup) + ', ' + dup.id + ') already uses ' + data.email + '.');
@@ -79,9 +83,11 @@ function updateInvestors(ids, changes) {
     ids = ids || [];
     changes = changes || {};
     var table = readTable_(SHEET.INVESTORS);
-    var count = 0;
+    var count = 0, noEmail = [];
     table.rows.forEach(function (r) {
       if (ids.indexOf(r.id) === -1) return;
+      // Approving a buyer (→ Active) requires a real email address
+      if (changes.status === 'Active' && !isEmail_(r.email)) { noEmail.push(investorName_(r)); return; }
       var f = { updated: new Date() };
       if (changes.status && INVESTOR_STATUSES.indexOf(changes.status) > -1) f.status = changes.status;
       if (changes.tier !== undefined && changes.tier !== null) f.tier = str_(changes.tier);
@@ -93,7 +99,7 @@ function updateInvestors(ids, changes) {
       updateObject_(SHEET.INVESTORS, r._row, f);
       count++;
     });
-    return { updated: count, investors: listInvestors() };
+    return { updated: count, skippedNoEmail: noEmail, investors: listInvestors() };
   });
 }
 

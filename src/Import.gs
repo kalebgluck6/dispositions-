@@ -42,7 +42,7 @@ function openImportSource_(urlOrId, tabName) {
   var sheets = src.getSheets();
   var sh = tabName ? src.getSheetByName(tabName) : sheets[0];
   if (!sh) throw new Error('Tab "' + tabName + '" not found. Available tabs: ' + sheets.map(function (x) { return x.getName(); }).join(', '));
-  if (!id && [SHEET.INVESTORS, SHEET.DEALS, SHEET.LOG, SHEET.JOBS, SHEET.RESPONSES, SHEET.SETTINGS].indexOf(sh.getName()) > -1) {
+  if (!id && [SHEET.INVESTORS, SHEET.DEALS, SHEET.LOG, SHEET.JOBS, SHEET.RESPONSES, SHEET.SETTINGS, SHEET.INTAKE].indexOf(sh.getName()) > -1) {
     throw new Error('Choose the tab that holds your existing list, not a system tab.');
   }
   return { spreadsheet: src, sheet: sh, tabs: sheets.map(function (x) { return x.getName(); }) };

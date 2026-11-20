@@ -17,7 +17,8 @@ var SHEET = {
   DEALS: 'Deals',
   JOBS: 'Distribution Jobs',
   LOG: 'Distribution Log',
-  RESPONSES: 'Responses'
+  RESPONSES: 'Responses',
+  INTAKE: 'Buyer Intake Log'
 };
 
 var INVESTOR_MAP = {
@@ -41,7 +42,11 @@ var INVESTOR_MAP = {
   updated: 'Last Updated',
   lastSent: 'Last Deal Sent',
   dealsReceived: 'Deals Received',
-  notes: 'Notes'
+  notes: 'Notes',
+  mailingAddress: 'Mailing Address',
+  purchases: 'Recent Purchases',
+  purchaseCount: 'Purchase Count',
+  lastPurchase: 'Last Purchase Date'
 };
 
 var DEAL_MAP = {
@@ -140,7 +145,21 @@ SCHEMAS[SHEET.INVESTORS] = INVESTOR_MAP;
 SCHEMAS[SHEET.DEALS] = DEAL_MAP;
 SCHEMAS[SHEET.JOBS] = JOB_MAP;
 SCHEMAS[SHEET.LOG] = LOG_MAP;
+var INTAKE_MAP = {
+  id: 'Intake ID',
+  received: 'Received',
+  source: 'Source',
+  name: 'Name',
+  email: 'Email',
+  phone: 'Phone',
+  result: 'Result',
+  investorId: 'Investor ID',
+  details: 'Details',
+  ref: 'Reference'
+};
+
 SCHEMAS[SHEET.RESPONSES] = RESPONSE_MAP;
+SCHEMAS[SHEET.INTAKE] = INTAKE_MAP;
 
 /** Columns that must be stored as plain text (zip codes, phones, IDs, dates-as-text). */
 var TEXT_COLUMNS = {};
@@ -148,9 +167,11 @@ TEXT_COLUMNS[SHEET.INVESTORS] = ['Investor ID', 'Phone'];
 TEXT_COLUMNS[SHEET.DEALS] = ['Deal ID', 'Zip', 'Closing Date', 'Photo IDs', 'Lot Size'];
 TEXT_COLUMNS[SHEET.LOG] = ['Log ID', 'Job ID', 'Deal ID', 'Investor ID'];
 TEXT_COLUMNS[SHEET.RESPONSES] = ['Response ID', 'Deal ID', 'Investor ID', 'Message ID'];
+TEXT_COLUMNS[SHEET.INTAKE] = ['Intake ID', 'Investor ID', 'Reference', 'Phone'];
 
 var DEAL_STATUSES = ['Available', 'Pending', 'Sold'];
-var INVESTOR_STATUSES = ['Active', 'Inactive'];
+var PENDING_REVIEW = 'Pending Review';
+var INVESTOR_STATUSES = ['Active', 'Inactive', PENDING_REVIEW];
 var RESPONSE_TYPES = ['Interested', 'Offer', 'Question', 'Not Interested', 'Unsubscribe', 'Reply'];
 var FOLLOW_UP_STATUSES = ['New', 'Contacted', 'Showing Scheduled', 'Offer Received', 'Under Contract', 'Closed', 'Dead'];
 
@@ -185,5 +206,22 @@ var DEFAULT_SETTINGS = [
   ['PROPERTY_TYPES', 'Single Family, Multi-Family (2-4), Multi-Family (5+), Condo / Townhouse, Mobile Home, Land, Commercial, Mixed Use', 'Property types (comma separated).'],
   ['MARKETS', '', 'Markets you operate in (comma separated, e.g. "Atlanta Metro, Dallas-Fort Worth"). Do not use commas inside a market name.'],
   ['RESPONSE_LOOKBACK_DAYS', '14', 'How many days back the inbox scanner looks for investor replies.'],
-  ['DRIVE_FOLDER_ID', '', 'Managed automatically — root Drive folder for deal photos and videos.']
+  ['DRIVE_FOLDER_ID', '', 'Managed automatically — root Drive folder for deal photos and videos.'],
+  // ---- New buyer intake (daily) ----
+  ['INTAKE_FORM_ON', 'TRUE', 'Add buyers who fill in your VIP buyer signup form.'],
+  ['INTAKE_SHEET_ON', 'FALSE', 'Add new buyers from a Google Sheet you or a VA keep updated.'],
+  ['INTAKE_SHEET_URL', '', 'Link to the Google Sheet of new buyers.'],
+  ['INTAKE_SHEET_TAB', '', 'Tab name in that sheet (blank = first tab).'],
+  ['INTAKE_CASH_ON', 'FALSE', 'Add cash buyers from a public-records export sheet (PropStream, BatchLeads, PropertyRadar, etc.).'],
+  ['INTAKE_CASH_URL', '', 'Link to the Google Sheet holding your cash-buyer / recent-sales export.'],
+  ['INTAKE_CASH_TAB', '', 'Tab name in that sheet (blank = first tab).'],
+  ['INTAKE_CASH_LOOKBACK_DAYS', '365', 'Only count purchases made within this many days.'],
+  ['INTAKE_CASH_MIN_PURCHASES', '1', 'Minimum purchases in the lookback window to be added as a buyer.'],
+  ['INTAKE_GMAIL_ON', 'TRUE', 'Add people who email you asking to join your buyers list.'],
+  ['INTAKE_GMAIL_DAYS', '3', 'How many days back the Gmail scan looks for buyer inquiries.'],
+  ['INTAKE_GMAIL_KEYWORDS', 'buyers list, buyer list, cash buyer, buy box, buybox, add me to your list, looking for deals, send me deals, off market deals, off-market deals', 'Phrases that mark an email as a buyer inquiry (comma separated).'],
+  ['INTAKE_SUMMARY_EMAIL', 'TRUE', 'Email me a summary each day new buyers are waiting for review.'],
+  ['INTAKE_HOUR', '6', 'Hour of the day (0–23, script time zone) the daily buyer intake runs.'],
+  ['BUYER_FORM_ID', '', 'Managed automatically — your VIP buyer signup form.'],
+  ['BUYER_FORM_URL', '', 'Managed automatically — public link to your VIP buyer signup form.']
 ];

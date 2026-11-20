@@ -102,6 +102,25 @@ const seed = `
   scanInboxForResponses();
   setDealStatus(d4.id, 'Sold', { buyer: 'Robert Ellis', soldPrice: 72000 });
   setDealStatus(d3.id, 'Pending', { buyer: 'Kevin Park' });
+  // ---- new buyer intake demo ----
+  const st = createBuyerSignupForm();
+  const form = M.forms[st.form.id];
+  form._submit({ 'First name': 'Jamal', 'Last name': 'Brooks', 'Company / LLC': 'Brooks Buys LLC', 'Email': 'jamal@brooksbuys.com', 'Mobile phone': '(404) 555-0111',
+    'Markets you buy in': ['Atlanta Metro'], 'Property types': ['Single Family'], 'How do you invest?': ['Fix & Flip', 'Cash Buyer'],
+    'Minimum purchase price': '90000', 'Maximum purchase price': '220000', 'Describe your buy box': '3/2 brick ranch, light-to-medium rehab, inside I-285', 'How do you fund purchases?': 'Cash', 'Deal alerts': ['Yes'] });
+  const ex = new M.Spreadsheet('PropStream Export — Cash Buyers');
+  const t = ex.insertSheet('Cash Sales');
+  const ago = (d) => { const x = new Date(Date.now() - d * 86400000); return (x.getMonth() + 1) + '/' + x.getDate() + '/' + x.getFullYear(); };
+  t.data = [['Address', 'City', 'State', 'Zip', 'Property Type', 'Owner 1 Full Name', 'Mailing Address', 'Mailing City', 'Mailing State', 'Mailing Zip', 'Last Sale Date', 'Last Sale Amount', 'Open Mortgage Balance', 'Email 1', 'Phone 1'],
+    ['12 ELM ST', 'DECATUR', 'GA', '30030', 'SFR', 'PEACH STATE HOMES LLC', '500 MAIN ST', 'ATLANTA', 'GA', '30303', ago(20), '$150,000', '0', '', ''],
+    ['88 PINE AVE', 'TUCKER', 'GA', '30084', 'SFR', 'PEACH STATE HOMES LLC', '500 MAIN ST', 'ATLANTA', 'GA', '30303', ago(64), '$118,000', '0', '', ''],
+    ['31 BIRCH LN', 'DECATUR', 'GA', '30032', 'SFR', 'PEACH STATE HOMES LLC', '500 MAIN ST', 'ATLANTA', 'GA', '30303', ago(130), '$172,000', '0', '', ''],
+    ['4 OAK CT', 'TUCKER', 'GA', '30084', 'Duplex', 'CARTER, DENISE', '9 RIVER RD', 'TUCKER', 'GA', '30084', ago(10), '$210,000', '', 'denise.carter@gmail.com', '(770) 555-0123'],
+    ['19 MILL RD', 'MACON', 'GA', '31204', 'Single Family Residential', 'MIDSTATE RENTALS LLC', 'PO BOX 88', 'MACON', 'GA', '31201', ago(33), '$64,000', '0', 'info@midstaterentals.com', '(478) 555-0190']];
+  saveSettings({ INTAKE_CASH_ON: 'TRUE', INTAKE_CASH_URL: ex.getUrl(), INTAKE_CASH_TAB: 'Cash Sales' });
+  M.inbox.push({ id: 'g1', from: 'Lisa Nguyen <lisa@nguyenventures.com>', subject: 'Please add me to your buyers list', body: 'Hi Jordan! I buy single family and duplexes in Atlanta Metro and Macon, $80k-$250k, light rehab flips. Cash buyer. Cell 678-555-0142.' });
+  runBuyerIntake();
+  enableDailyIntake(6);
   M.sent = [];
   window.__SEEDED__ = true;
 })();`;
