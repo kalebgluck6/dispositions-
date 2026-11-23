@@ -129,6 +129,37 @@ Open **New Buyers** in the app. Turn on the sources you want and click **Turn on
 * Everything is recorded in the **Buyer Intake Log** sheet.
 * **Direct data-provider connection:** the cash-buyer source currently reads an export sheet. A direct API connection to a provider such as BatchData, PropertyRadar or ATTOM can be added once you pick one and have an API key. That would also do skip tracing automatically.
 
+## Automatic buyers from public records (morning + night)
+
+Open **New Buyers** and click **Turn on morning + night intake**. The default times are 6 AM and 7 PM, and you can change them. Two sources pull active investors from recorded sales.
+
+### DealMachine: all your areas
+Covers 22 localities: Hampton Roads (Virginia Beach, Norfolk, Chesapeake, Portsmouth, Suffolk, Hampton, Newport News, **Poquoson**, York, Williamsburg, James City, Isle of Wight, Gloucester), **Richmond** (Richmond City, Henrico, Chesterfield, Hanover) and **Elizabeth City, NC** (Pasquotank, Camden, Currituck, Perquimans, Chowan). Click a chip to add or remove an area.
+
+Each run finds properties that **sold in the last 14 days** (adjustable) where the buyer:
+* paid **cash**: no mortgage on the property, and the owner doesn't live there;
+* used a **hard-money / private lender** (optional);
+* is a **new-construction / land buyer**: a cash purchase of **residential vacant land or lots** by an owner who holds at least 2 properties, i.e. builders and developers rather than one-time lot buyers. These are tagged **Developer** with property type **Land**.
+
+Sales by the same owner are combined into one buyer, and the buy box comes from what they bought. With "Get phone + email" on, DealMachine supplies the owner's contact details. Phones on the **Do-Not-Call** list are never stored as the contact number; they're noted instead.
+
+**Connect it:** in DealMachine, go to **Settings → Developer** ([dealmachine.com/settings/developer](https://dealmachine.com/settings/developer)), click **Create API Key**, and paste the key into the DealMachine card. The key is stored privately in the script's properties, never in the spreadsheet, and is checked before it's saved. Your DealMachine plan must include API data access.
+
+**Credits:** DealMachine charges 1 credit per property and 1 per contact, and never charges twice for the same record in a month. Each run only processes sales it hasn't seen before. You control spend with **Max properties per run** (shared fairly between cash, hard-money and land searches) and **Monthly credit limit**. **Preview matches (free)** shows how many sales match right now without using credits.
+
+### Norfolk county records: free
+City of Norfolk's open data publishes every recorded transfer with the buyer, date and price, updated daily. Free records don't show whether a mortgage was used, so by default only company / LLC / trust buyers are added. Vacant-land buyers are tagged **Developer**. These buyers usually have no email, so skip trace them before approving.
+
+Why not other free sources:
+* **Zillow** forbids automated collection and doesn't publish who bought or whether they paid cash.
+* **Virginia Beach** publishes sales without buyer names.
+* **Richmond's** transfer file is 72 MB, over Google's 50 MB download limit.
+* **Hampton, Henrico, Chesapeake** and **Pasquotank** don't offer buyer data in a form that can be pulled automatically.
+
+DealMachine covers all of these.
+
+The same company found by several sources (for example DealMachine and Norfolk records) is kept as **one** buyer, and each new purchase is added to their history. Everyone still goes to **Waiting for your review**.
+
 ## The data (Google Sheet tabs)
 
 | Tab | One row per… | Key columns |
@@ -156,7 +187,7 @@ You can add your own columns to any tab, because the app finds columns by header
 You don't need any of this to *use* the system. It's for changing the code.
 
 ```bash
-npm test                 # runs the backend against an in-memory Apps Script mock (29 end-to-end checks)
+npm test                 # runs the backend against an in-memory Apps Script mock (36 end-to-end checks)
 npm run preview          # builds preview/index.html — the real UI + real server code with sample data, nothing is emailed
 ```
 

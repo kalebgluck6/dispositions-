@@ -740,6 +740,8 @@ const SRC_HELP = {
   form: 'Your branded "VIP Buyers List" Google Form. Share the link on Facebook groups, Instagram, your website, email signature and at meetups. Signups arrive instantly with their buy box.',
   sheet: 'Any Google Sheet you or a VA keep adding buyers to (from calls, meetups, BiggerPockets, other lists). Needs an Email column. Each day only new rows are added.',
   cash: 'Investors who recently bought with cash in your area. Export recent cash sales from PropStream, BatchLeads, PropertyRadar, DealMachine or your county records into a Google Sheet. Each day the system groups the sales by owner and builds their buy box from what they bought. Owners without an email are held until you add one (skip trace).',
+  dealmachine: 'Active investors found in recorded sales across all your areas: properties that sold in the last few days where the buyer paid cash (no mortgage) or used a hard-money lender and doesn\'t live there, plus builders buying residential land and lots. DealMachine also supplies the owner\'s phone and email. Each run only pulls new sales, so credits stay low.',
+  county: 'Free public records from the City of Norfolk: every recorded property sale with the buyer, date and price, updated daily. Free records don\'t show whether a mortgage was used, so by default only company / LLC / trust buyers are added. They usually have no email, so skip trace them before approving.',
   gmail: 'People who email you asking to get on your list ("add me to your buyers list", "send me deals", "cash buyer"…). Their name, phone, markets, price range and strategy are read from the email.'
 };
 VIEWS.intake = {
@@ -752,11 +754,12 @@ VIEWS.intake = {
     const last = st.lastResult || {};
     const hours = Array.from({ length: 24 }, (_, h) => [String(h), (h % 12 || 12) + ':00 ' + (h < 12 ? 'AM' : 'PM')]);
     let h = '<div class="card" style="margin-bottom:18px"><div class="bd row" style="gap:14px">' +
-      '<div style="flex:1;min-width:260px"><div style="font-family:var(--serif);font-size:22px">Daily buyer intake</div><div class="small muted">' +
-      (st.daily ? 'Runs every day at <b style="color:var(--text)">' + esc(hours[+v.INTAKE_HOUR || 0][1]) + '</b>. New buyers wait here for your approval and never receive deals until approved.' : 'Turn on the daily schedule to find new buyers automatically every morning.') +
+      '<div style="flex:1;min-width:260px"><div style="font-family:var(--serif);font-size:22px">Automatic buyer intake</div><div class="small muted">' +
+      (st.daily ? 'Runs every morning at <b style="color:var(--text)">' + esc(hours[+v.INTAKE_HOUR || 0][1]) + '</b> and every night at <b style="color:var(--text)">' + esc(hours[+v.INTAKE_HOUR_PM || 0][1]) + '</b>. New buyers wait here for your approval and never receive deals until approved.' : 'Turn on the schedule to find new buyers automatically every morning and every night.') +
       (st.lastRun ? ' Last run ' + ago(st.lastRun) + '.' : '') + '</div></div>' +
-      '<select id="intakeHour" style="width:auto">' + hours.map(o => '<option value="' + o[0] + '"' + (o[0] === String(v.INTAKE_HOUR) ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>' +
-      (st.daily ? '<button class="btn" data-act="intakeDaily" data-val="off">Daily: ON · turn off</button>' : '<button class="btn primary" data-act="intakeDaily" data-val="on">Turn on daily intake</button>') +
+      '<span class="small muted">Morning</span><select id="intakeHour" style="width:auto">' + hours.map(o => '<option value="' + o[0] + '"' + (o[0] === String(v.INTAKE_HOUR) ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>' +
+      '<span class="small muted">Night</span><select id="intakeHourPm" style="width:auto">' + hours.map(o => '<option value="' + o[0] + '"' + (o[0] === String(v.INTAKE_HOUR_PM) ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>' +
+      (st.daily ? '<button class="btn" data-act="intakeDaily" data-val="on" title="Save new times">Update times</button><button class="btn" data-act="intakeDaily" data-val="off">Schedule: ON · turn off</button>' : '<button class="btn primary" data-act="intakeDaily" data-val="on">Turn on morning + night intake</button>') +
       '<button class="btn" data-act="intakeRun">' + icon('refresh') + 'Find new buyers now</button></div></div>';
 
     // review queue
@@ -783,6 +786,27 @@ VIEWS.intake = {
         '<div class="bd stack"><div class="small muted">' + SRC_HELP[k] + '</div>' + body + res + '</div></div>';
     };
     const cfg = (key, label, type, ph) => field(label, '<input type="' + (type || 'text') + '" data-cfg="' + key + '" value="' + esc(v[key]) + '" placeholder="' + esc(ph || '') + '">');
+    const dm = st.dm || {};
+    const chosen = list(v.INTAKE_DM_COUNTIES);
+    const regions = [];
+    (st.areas || []).forEach(a => { if (!regions.includes(a.region)) regions.push(a.region); });
+    const yn = (key, label) => field(label, '<select data-cfg="' + key + '">' + [['TRUE', 'Yes'], ['FALSE', 'No']].map(o => '<option value="' + o[0] + '"' + (String(v[key]).toUpperCase() === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>');
+    h += '<div class="grid" style="margin-bottom:18px;grid-template-columns:1.35fr 1fr;align-items:start">' +
+      srcCard('dealmachine', 'DealMachine: Active Cash, Hard-Money & Land Buyers',
+        '<div class="field"><label>DealMachine API key ' + (dm.hasKey ? '<span style="color:var(--accent-2)">· connected (' + esc(dm.keyHint) + ')</span>' : '') + '</label><div class="row" style="flex-wrap:nowrap"><input type="password" id="dmKey" autocomplete="off" placeholder="' + (dm.hasKey ? 'Paste a new key to replace it' : 'dm_sk_live_…') + '"><button class="btn sm primary" data-act="dmSaveKey">Save & test</button></div>' +
+          '<div class="hint">In DealMachine: <a href="https://dealmachine.com/settings/developer" target="_blank">Settings → Developer</a> → Create API Key → copy it here. It\'s stored privately in your Google script, never in the spreadsheet.</div></div>' +
+        '<div class="field"><label>Areas (' + chosen.length + ' selected)</label>' + regions.map(r => '<div class="small muted" style="margin:6px 0 4px">' + esc(r) + '</div><div class="chips">' +
+          st.areas.filter(a => a.region === r).map(a => '<span class="chip' + (chosen.includes(a.fips) ? ' on' : '') + '" data-act="chip" data-fips="' + a.fips + '">' + esc(a.name) + '</span>').join('') + '</div>').join('') + '</div>' +
+        '<div class="grid g3">' + cfg('INTAKE_DM_DAYS', 'Sold within (days)', 'number') + cfg('INTAKE_DM_MIN_PRICE', 'Min. house price', 'number') + yn('INTAKE_DM_ABSENTEE', 'Investors only (not owner-occupied)') +
+          yn('INTAKE_DM_HARD_MONEY', 'Include hard-money buyers') + yn('INTAKE_DM_LAND', 'Include new-construction / land buyers') + cfg('INTAKE_DM_LAND_MIN_OWNED', 'Land buyer owns at least', 'number') +
+          cfg('INTAKE_DM_LAND_MIN_PRICE', 'Min. land price', 'number') + yn('INTAKE_DM_CONTACTS', 'Get phone + email') + cfg('INTAKE_DM_MAX_PER_RUN', 'Max properties per run', 'number') + '</div>' +
+        '<div class="grid g3">' + cfg('INTAKE_DM_MONTHLY_CAP', 'Monthly credit limit', 'number') + '<div class="field"><label>Credits used this month</label><div style="padding:9px 0;font-size:15px">' + (dm.creditsThisMonth || 0) + (dm.cap ? ' <span class="muted">of ' + dm.cap + '</span>' : '') + '</div></div></div>' +
+        '<div class="row"><button class="btn sm primary" data-act="intakeSave" data-src="dealmachine">Save</button><button class="btn sm" data-act="dmPreview"' + (dm.hasKey ? '' : ' disabled') + '>Preview matches (free)</button></div><div class="small" id="check-dealmachine"></div>') +
+      srcCard('county', 'Norfolk County Records (Free)',
+        '<div class="grid g3">' + cfg('INTAKE_COUNTY_DAYS', 'Sold within (days)', 'number') + cfg('INTAKE_COUNTY_MIN_PRICE', 'Min. price', 'number') + yn('INTAKE_COUNTY_ENTITIES_ONLY', 'Companies / LLCs only') + '</div>' +
+        '<div class="small muted">Other localities in your areas (Virginia Beach, Chesapeake, Richmond, Henrico, Pasquotank…) don\'t publish buyer names in a form that can be pulled automatically, so DealMachine covers them.</div>' +
+        '<div class="row"><button class="btn sm primary" data-act="intakeSave" data-src="county">Save</button></div>') +
+      '</div>';
     h += '<div class="grid g2" style="margin-bottom:18px;align-items:start">' +
       srcCard('form', 'VIP Buyer Signup Form', st.form
         ? '<div class="field"><label>Your public signup link (' + (st.form.responses || 0) + ' signups)</label><div class="row" style="flex-wrap:nowrap"><input type="text" readonly id="formUrl" value="' + esc(st.form.url) + '"><button class="btn sm" data-act="copyFormUrl">Copy</button></div></div>' +
@@ -807,7 +831,7 @@ VIEWS.intake = {
   },
   mount() { if (!S.intake) api('getIntakeStatus').then(st => { S.intake = st; if (S.view === 'intake') render(); }).catch(fail); }
 };
-const INTAKE_KEYS = { form: 'INTAKE_FORM_ON', sheet: 'INTAKE_SHEET_ON', cash: 'INTAKE_CASH_ON', gmail: 'INTAKE_GMAIL_ON' };
+const INTAKE_KEYS = { form: 'INTAKE_FORM_ON', sheet: 'INTAKE_SHEET_ON', cash: 'INTAKE_CASH_ON', gmail: 'INTAKE_GMAIL_ON', dealmachine: 'INTAKE_DM_ON', county: 'INTAKE_COUNTY_ON' };
 
 async function intakeStatus(ids, status) {
   const tier = status === 'Active' ? (($('#approveTier') || {}).value || '') : '';
@@ -938,7 +962,7 @@ const ACT = {
     } catch (e) { fail(e); el.disabled = false; el.innerHTML = old; }
   },
   intakeDaily: async el => {
-    try { S.intake = await api(el.dataset.val === 'on' ? 'enableDailyIntake' : 'disableDailyIntake', ($('#intakeHour') || {}).value); S.settings = await api('getSettings'); toast('Daily intake ' + (el.dataset.val === 'on' ? 'on' : 'off') + '.'); render(); } catch (e) { fail(e); }
+    try { S.intake = await api(el.dataset.val === 'on' ? 'enableDailyIntake' : 'disableDailyIntake', ($('#intakeHour') || {}).value, ($('#intakeHourPm') || {}).value); S.settings = await api('getSettings'); toast('Daily intake ' + (el.dataset.val === 'on' ? 'on' : 'off') + '.'); render(); } catch (e) { fail(e); }
   },
   createForm: async el => {
     el.disabled = true; el.innerHTML = '<span class="spinner"></span> Creating form…';
@@ -950,9 +974,27 @@ const ACT = {
     if (navigator.clipboard) navigator.clipboard.writeText(i.value).then(done).catch(() => { try { document.execCommand('copy'); done(); } catch (e) { toast('Select the link and copy it.', 'warn'); } });
     else { try { document.execCommand('copy'); done(); } catch (e) { toast('Select the link and copy it.', 'warn'); } }
   },
+  dmSaveKey: async el => {
+    const k = $('#dmKey').value.trim();
+    if (!k) return toast('Paste your DealMachine API key first.', 'warn');
+    el.disabled = true; el.innerHTML = '<span class="spinner"></span> Testing…';
+    try { S.intake = await api('saveDealMachineKey', k); toast('DealMachine connected.'); render(); }
+    catch (e) { fail(e); el.disabled = false; el.textContent = 'Save & test'; }
+  },
+  dmPreview: async el => {
+    const out = $('#check-dealmachine');
+    out.innerHTML = '<span class="spinner"></span> Counting recent sales (no credits used)…';
+    try {
+      const p = await api('previewDealMachine');
+      out.innerHTML = '<div style="color:var(--accent-2)">Right now in your ' + p.counties + ' areas, sold in the last ' + p.days + ' days:</div>' +
+        '<div><b style="color:var(--text)">' + p.cash.toLocaleString() + '</b> cash investor purchases · <b style="color:var(--text)">' + p.hardMoney.toLocaleString() + '</b> hard-money purchases · <b style="color:var(--text)">' + p.land.toLocaleString() + '</b> residential land / lot purchases by builders</div>' +
+        '<div class="muted">Each run pulls only sales it hasn\'t seen before, up to your per-run limit.</div>';
+    } catch (e) { out.innerHTML = '<span style="color:#FF9A95">' + esc(e.message) + '</span>'; }
+  },
   intakeSave: async el => {
     const card = el.closest('.card[data-src]'), vals = {};
     $$('[data-cfg]', card).forEach(x => { vals[x.dataset.cfg] = x.value; });
+    if (card.dataset.src === 'dealmachine') vals.INTAKE_DM_COUNTIES = $$('[data-fips].on', card).map(c => c.dataset.fips).join(', ');
     try { S.settings = await api('saveSettings', vals); toast('Saved.'); } catch (e) { fail(e); }
   },
   intakeCheck: async el => {

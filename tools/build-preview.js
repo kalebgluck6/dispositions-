@@ -119,8 +119,38 @@ const seed = `
     ['19 MILL RD', 'MACON', 'GA', '31204', 'Single Family Residential', 'MIDSTATE RENTALS LLC', 'PO BOX 88', 'MACON', 'GA', '31201', ago(33), '$64,000', '0', 'info@midstaterentals.com', '(478) 555-0190']];
   saveSettings({ INTAKE_CASH_ON: 'TRUE', INTAKE_CASH_URL: ex.getUrl(), INTAKE_CASH_TAB: 'Cash Sales' });
   M.inbox.push({ id: 'g1', from: 'Lisa Nguyen <lisa@nguyenventures.com>', subject: 'Please add me to your buyers list', body: 'Hi Jordan! I buy single family and duplexes in Atlanta Metro and Macon, $80k-$250k, light rehab flips. Cash buyer. Cell 678-555-0142.' });
+  // ---- DealMachine + Norfolk demo (simulated API responses in the documented formats) ----
+  const dAgo = (d) => new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
+  const P = (id, a, c, o, d, pr, t, ct, f) => ({ dm_property_id: id, address: a, city: c, state: f.startsWith('37') ? 'NC' : 'VA', owner_1_full_name: o, owner_mailing_address_full: '2101 Executive Dr, Hampton, VA 23666', last_sale_date: dAgo(d), last_sale_price: pr, property_type: [t], contacts: ct || [], _f: f });
+  const C = (f, l, ph, em, dnc) => ({ first_name: f, last_name: l, is_likely_owner: true, phones: ph ? [{ number: ph, type: 'wireless', do_not_call: !!dnc }] : [], emails: em ? [{ address: em, verification_status: 'very_likely_deliverable' }] : [] });
+  const DM = {
+    cash: [P('a1', '1218 W 39th St', 'Norfolk', 'TIDEWATER HOME BUYERS LLC', 2, 168000, 1, [C('Ray', 'Coles', '7575550101', 'ray@tidewaterhomebuyers.com')], '51710'),
+      P('a2', '44 Seldendale Dr', 'Hampton', 'TIDEWATER HOME BUYERS LLC', 9, 139000, 1, [], '51650'),
+      P('a3', '3307 Griffin St', 'Richmond', 'RIVER CITY REHAB GROUP LLC', 4, 182000, 1, [C('Tasha', 'Mims', '8045550133', 'tasha@rivercityrehab.com')], '51760'),
+      P('a4', '17 Poquoson Ave', 'Poquoson', 'HARRIS, DEREK', 6, 245000, 1, [C('Derek', 'Harris', '7575550160', null, true)], '51735')],
+    hard: [P('a5', '905 Bolling Ave', 'Norfolk', 'FLIPRIGHT VENTURES LLC', 3, 121000, 1, [C('Dana', 'Reyes', '7575550177', 'dana@flipright.co')], '51710')],
+    land: [P('a6', 'Lot 12 Riverside Dr', 'Elizabeth City', 'COASTAL NEW HOMES BUILDERS INC', 5, 48000, 9, [C('Lee', 'Park', '2525550112', 'lee@coastalnewhomes.com')], '37139'),
+      P('a7', 'Lot 13 Riverside Dr', 'Elizabeth City', 'COASTAL NEW HOMES BUILDERS INC', 5, 49500, 9, [], '37139'),
+      P('a8', '0 Nansemond Pkwy', 'Suffolk', 'SEABOARD DEVELOPMENT PARTNERS LLC', 11, 95000, 9, [C('Marcus', 'Bell', '7575550188', 'mbell@seaboarddev.com')], '51800')]
+  };
+  M.fetchHandler = (url, o) => {
+    if (url.indexOf('data.norfolk.gov/api/views/metadata') > -1) return { code: 200, body: [{ id: 'qva7-tzrf', name: 'Property Assessment and Sales - FY27' }] };
+    if (url.indexOf('data.norfolk.gov/resource/') > -1) return { code: 200, body: [
+      { parcel_id: '1', grantee: 'Red Property Llc', transfer_date: dAgo(5) + 'T00:00:00.000', consideration: '146901', property_street_number: '316', property_street_name: 'Poplar', property_street_type: 'AVE', property_city: 'Norfolk', property_use: 'Single Family - Detached' },
+      { parcel_id: '2', grantee: 'New Beginnings Development Llc', transfer_date: dAgo(7) + 'T00:00:00.000', consideration: '42000', property_street_number: '139', property_street_name: 'Filbert', property_street_type: 'ST', property_city: 'Norfolk', property_use: 'Vacant Land' }] };
+    if (url.indexOf('api.v2.dealmachine.com') === -1) return { code: 404, body: '{}' };
+    if (url.endsWith('/account')) return { code: 200, body: { data: {} } };
+    if (url.indexOf('/filters?') > -1) return { code: 200, body: { data: [{ filter_id: 'property_type', options: [{ option_id: 1, label: 'Single Family' }, { option_id: 9, label: 'Vacant Land' }] }, { filter_id: 'additional_property_types', options: [{ option_id: 101, label: 'Residential Vacant Land' }] }], pagination: {} } };
+    const b = JSON.parse(o.payload), has = (id) => b.filters.some(x => x.filter_id === id);
+    const k = has('additional_property_types') ? 'land' : has('is_mortgage_1_private_lender') ? 'hard' : 'cash';
+    if (url.endsWith('/count')) return { code: 200, body: { total_properties: { cash: 9, hard: 3, land: 2 }[k] * b.locations.length } };
+    const rows = DM[k].filter(p => b.locations.some(l => l.code === p._f));
+    return { code: 200, body: { data: rows, pagination: { has_next_page: false }, credits: { used: rows.length * 2 } } };
+  };
+  saveDealMachineKey('dm_sk_live_DEMOKEY000000000000');
+  saveSettings({ INTAKE_DM_ON: 'TRUE' });
   runBuyerIntake();
-  enableDailyIntake(6);
+  enableDailyIntake(6, 19);
   M.sent = [];
   window.__SEEDED__ = true;
 })();`;

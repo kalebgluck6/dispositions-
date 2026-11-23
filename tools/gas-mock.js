@@ -253,6 +253,19 @@
     Permission: { VIEW: 'VIEW' }
   };
 
+  // ---------- UrlFetch ----------
+  MOCK.fetches = [];
+  MOCK.fetchHandler = () => ({ code: 404, body: '{}' });
+  root.UrlFetchApp = {
+    fetch(url, opts) {
+      opts = opts || {};
+      MOCK.fetches.push({ url, opts });
+      const r = MOCK.fetchHandler(url, opts) || { code: 404, body: '' };
+      const body = typeof r.body === 'string' ? r.body : JSON.stringify(r.body);
+      return { getResponseCode: () => r.code || 200, getContentText: () => body, getHeaders: () => r.headers || {} };
+    }
+  };
+
   // ---------- Forms ----------
   MOCK.forms = {};
   function FormItem(form, kind) { this.kind = kind; this.title = ''; this.required = false; this.choices = []; form.items.push(this); }

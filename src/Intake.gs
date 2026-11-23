@@ -17,7 +17,9 @@ var INTAKE_SOURCES = {
   form: { label: 'Signup form', setting: 'INTAKE_FORM_ON' },
   sheet: { label: 'Google Sheet sync', setting: 'INTAKE_SHEET_ON' },
   cash: { label: 'Cash buyer (public records)', setting: 'INTAKE_CASH_ON' },
-  gmail: { label: 'Gmail inquiry', setting: 'INTAKE_GMAIL_ON' }
+  gmail: { label: 'Gmail inquiry', setting: 'INTAKE_GMAIL_ON' },
+  dealmachine: { label: 'DealMachine (recent sales)', setting: 'INTAKE_DM_ON' },
+  county: { label: 'County records (Norfolk)', setting: 'INTAKE_COUNTY_ON' }
 };
 
 var BUYER_FORM_Q = {
@@ -42,6 +44,8 @@ function normKey_(s) { return lc_(s).replace(/[^a-z0-9]/g, ''); }
 
 /** Identity for buyers without an email (public-records owners): name + mailing street. */
 function ownerKey_(inv) {
+  // Companies / LLCs are identified by name alone (public records often lack their mailing address)
+  if (str_(inv.company) && ENTITY_RE.test(inv.company)) return 'co|' + normKey_(inv.company);
   var name = normKey_(str_(inv.company) || (str_(inv.firstName) + ' ' + str_(inv.lastName)));
   var addr = normKey_(String(inv.mailingAddress || '').split(',')[0]);
   return name && addr ? name + '|' + addr : '';
@@ -51,7 +55,7 @@ function titleCase_(s) {
   s = str_(s);
   if (s !== s.toUpperCase()) return s;
   return s.toLowerCase().replace(/\b([a-z])/g, function (m) { return m.toUpperCase(); })
-    .replace(/\b(Llc|Lp|Llp|Inc|Ii|Iii|Iv)\b/g, function (m) { return m.toUpperCase(); });
+    .replace(/\b(Llc|Lp|Llp|Ii|Iii|Iv)\b/g, function (m) { return m.toUpperCase(); });
 }
 
 function parseDateLoose_(v) {
@@ -156,7 +160,11 @@ function intakeCtx_() {
     var k = ownerKey_(r);
     if (k) ctx.byKey[k] = r;
   });
-  readTable_(SHEET.INTAKE).rows.forEach(function (l) { if (l.ref) ctx.refs[l.ref] = true; });
+  readTable_(SHEET.INTAKE).rows.forEach(function (l) {
+    if (!l.ref) return;
+    ctx.refs[l.ref] = true;
+    String(l.ref).split(';').forEach(function (r) { if (r) ctx.refs[r] = true; }); // one buyer can cover several sales
+  });
   return ctx;
 }
 
@@ -195,8 +203,12 @@ function addLead_(ctx, sourceLabel, lead, ref, details) {
     if (str_(lead.phone) && !str_(existing.phone)) f.phone = str_(lead.phone);
     if (Object.keys(f).length) {
       f.updated = new Date();
-      var pending = ctx.updates[existing.id] || (ctx.updates[existing.id] = { row: existing._row, fields: {} });
-      Object.keys(f).forEach(function (k) { pending.fields[k] = f[k]; existing[k] = f[k]; });
+      if (existing._row) {
+        var pending = ctx.updates[existing.id] || (ctx.updates[existing.id] = { row: existing._row, fields: {} });
+        Object.keys(f).forEach(function (k) { pending.fields[k] = f[k]; });
+      }
+      // records created earlier in this same run are still in ctx.adds: just update them in place
+      Object.keys(f).forEach(function (k) { existing[k] = f[k]; });
       if (f.email) ctx.byEmail[f.email] = existing;
       log.result = 'Updated existing buyer (' + Object.keys(f).filter(function (k) { return k !== 'updated'; }).join(', ') + ')';
       cur.updated++;
@@ -364,7 +376,7 @@ function cashMap_(headers) {
   return map;
 }
 
-var ENTITY_RE = /\b(llc|l\.l\.c\.?|inc\.?|corp\.?|corporation|company|trust|trustee|holdings?|properties|investments?|capital|partners|lp|llp|ltd|group|ventures|realty|homes|estates?|fund|reit|enterprises?|solutions)\b/i;
+var ENTITY_RE = /\b(llc|l\.l\.c\.?|inc\.?|corp\.?|corporation|company|trust|trustee|holdings?|properties|investments?|capital|partners|lp|llp|ltd|group|ventures|realty|homes|estates?|fund|reit|enterprises?|solutions|series|builders?|construction|developments?|developers?|land)\b/i;
 
 /** Turns export rows into buyer leads (one per owner), with buy boxes built from their purchases. */
 function cashLeadsFrom_(values, settings) {
@@ -493,7 +505,10 @@ function gmailLeads_(ctx) {
 
 // ---------- orchestration ----------
 
-var INTAKE_RUNNERS = { form: formLeads_, sheet: sheetLeads_, cash: cashLeads_, gmail: gmailLeads_ };
+/** Resolved at run time so file order in the Apps Script project doesn't matter. */
+function intakeRunner_(k) {
+  return { form: formLeads_, sheet: sheetLeads_, cash: cashLeads_, gmail: gmailLeads_, dealmachine: dmLeads_, county: countyLeads_ }[k];
+}
 
 /** Caller must hold the lock (or use runBuyerIntake). */
 function runIntakeSources_(sources, sendSummary) {
@@ -505,7 +520,7 @@ function runIntakeSources_(sources, sendSummary) {
     if (!bool_(s[src.setting])) { results[k] = { status: 'off' }; return; }
     ctx.cur = { added: 0, updated: 0, duplicate: 0, skipped: 0 };
     try {
-      var note = INTAKE_RUNNERS[k](ctx);
+      var note = intakeRunner_(k)(ctx);
       results[k] = { status: 'ok', note: note || '', added: ctx.cur.added, updated: ctx.cur.updated, duplicate: ctx.cur.duplicate, skipped: ctx.cur.skipped };
     } catch (e) {
       results[k] = { status: 'error', note: String(e && e.message || e), added: ctx.cur.added, updated: ctx.cur.updated };
@@ -571,7 +586,9 @@ function getIntakeStatus() {
     lastResult: last,
     pending: pending,
     log: log,
-    sources: Object.keys(INTAKE_SOURCES).map(function (k) { return { key: k, label: INTAKE_SOURCES[k].label, on: bool_(s[INTAKE_SOURCES[k].setting]) }; })
+    sources: Object.keys(INTAKE_SOURCES).map(function (k) { return { key: k, label: INTAKE_SOURCES[k].label, on: bool_(s[INTAKE_SOURCES[k].setting]) }; }),
+    dm: { hasKey: !!dmKey_(), keyHint: dmKey_() ? '…' + dmKey_().slice(-4) : '', creditsThisMonth: dmCreditsUsed_(), cap: parseInt(s.INTAKE_DM_MONTHLY_CAP, 10) || 0 },
+    areas: DM_AREAS
   });
 }
 
@@ -618,14 +635,18 @@ function createBuyerSignupForm() {
   });
 }
 
-/** Turns on the daily intake at the chosen hour. */
-function enableDailyIntake(hour) {
+/** Turns on the automatic intake: every morning and every night at the chosen hours. */
+function enableDailyIntake(hourAm, hourPm) {
   return withLock_(function () {
-    var h = parseInt(hour, 10);
-    if (isNaN(h) || h < 0 || h > 23) h = parseInt(getSettings_().INTAKE_HOUR, 10) || 6;
-    setSetting_('INTAKE_HOUR', String(h));
+    var s = getSettings_();
+    var valid = function (h) { h = parseInt(h, 10); return isNaN(h) || h < 0 || h > 23 ? null : h; };
+    var am = valid(hourAm); if (am === null) am = valid(s.INTAKE_HOUR); if (am === null) am = 6;
+    var pm = valid(hourPm); if (pm === null) pm = valid(s.INTAKE_HOUR_PM); if (pm === null) pm = 19;
+    setSetting_('INTAKE_HOUR', String(am));
+    setSetting_('INTAKE_HOUR_PM', String(pm));
     deleteTriggers_('runBuyerIntake');
-    ScriptApp.newTrigger('runBuyerIntake').timeBased().everyDays(1).atHour(h).create();
+    ScriptApp.newTrigger('runBuyerIntake').timeBased().everyDays(1).atHour(am).create();
+    if (pm !== am) ScriptApp.newTrigger('runBuyerIntake').timeBased().everyDays(1).atHour(pm).create();
     var form = buyerForm_();
     if (form) ensureFormTrigger_(form);
     return getIntakeStatus();

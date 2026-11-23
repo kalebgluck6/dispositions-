@@ -496,4 +496,174 @@ step('daily schedule + intake status + log are serializable', () => {
   assert(!M.isLocked());
 });
 
+
+// ---------------- Public records: DealMachine + Norfolk ----------------
+const daysAgo = (d) => { const x = new Date(Date.now() - d * 86400000); return x.toISOString().slice(0, 10); };
+const dmFilters = { data: [
+  { filter_id: 'property_type', options: [{ option_id: 1, label: 'Single Family' }, { option_id: 9, label: 'Vacant Land' }, { option_id: 10, label: 'Development Site' }] },
+  { filter_id: 'additional_property_types', options: [{ option_id: 101, label: 'Residential Vacant Land' }, { option_id: 102, label: 'Commercial Vacant Land' }, { option_id: 103, label: 'Single Family Residential' }] }
+], pagination: { has_next_page: false } };
+const prop = (id, addr, city, owner, date, price, typeId, contacts, mailing) => ({
+  dm_property_id: id, full_address: addr + ', ' + city + ', VA', address: addr, city, state: 'VA', zip: '23500',
+  owner_1_full_name: owner, owner_mailing_address_full: mailing || '100 OFFICE PARK DR, NORFOLK, VA 23502',
+  last_sale_date: date, last_sale_price: price, property_type: [typeId], contacts: contacts || []
+});
+const contact = (first, last, phones, emails) => ({ dm_person_id: 'per_' + first, first_name: first, last_name: last, full_name: first + ' ' + last, is_likely_owner: true, phones, emails });
+let dmSearchBodies = [];
+let dmData = {};
+function dmHandler(url, opts) {
+  const auth = (opts.headers || {}).Authorization || '';
+  if (url.indexOf('api.v2.dealmachine.com/v1') === -1) return null;
+  if (auth !== 'Bearer dm_sk_live_TESTKEY1234567890') return { code: 401, body: { error: { code: 'unauthorized', message: 'bad key' } } };
+  if (url.endsWith('/account')) return { code: 200, body: { data: { id: 1 } } };
+  if (url.indexOf('/filters?') > -1) return { code: 200, body: dmFilters };
+  const body = JSON.parse(opts.payload || '{}');
+  const f = (id) => body.filters.find(x => x.filter_id === id);
+  const kind = f('additional_property_types') ? 'land' : f('is_mortgage_1_private_lender') ? 'hard' : 'cash';
+  if (url.endsWith('/properties/search/count')) return { code: 200, body: { total_properties: { cash: 40, hard: 12, land: 7 }[kind] * body.locations.length, total_people: 0, total_results: 0 } };
+  dmSearchBodies.push(body);
+  const all = (dmData[kind] || []).filter(p => body.locations.some(l => l.code === p._fips));
+  const start = (body.page - 1) * body.per_page, rows = all.slice(start, start + body.per_page);
+  return { code: 200, body: { data: rows, pagination: { page: body.page, per_page: body.per_page, has_next_page: start + body.per_page < all.length }, credits: { used: rows.length * 2 } } };
+}
+
+step('DealMachine key: format checked, verified against the API, stored privately', () => {
+  M.fetchHandler = dmHandler;
+  throwsMsg(() => g.saveDealMachineKey('abc123'), /dm_sk_live_/);
+  throwsMsg(() => g.saveDealMachineKey('dm_sk_live_WRONGKEY99999999'), /rejected the API key/);
+  assert(!M.props.DM_API_KEY, 'bad key not stored');
+  const st = g.saveDealMachineKey('dm_sk_live_TESTKEY1234567890');
+  assert.strictEqual(st.dm.hasKey, true);
+  assert.strictEqual(st.dm.keyHint, '…7890');
+  assert(!JSON.stringify(g.getSettings()).includes('TESTKEY'), 'key never in settings/sheet');
+  assert(!JSON.stringify(st).includes('TESTKEY1234'), 'key never sent to the browser');
+});
+
+step('DealMachine: cash, hard-money and new-construction land buyers become grouped buyer leads', () => {
+  dmData = {
+    cash: [
+      Object.assign(prop('p1', '12 Elm St', 'Norfolk', 'TIDEWATER HOME BUYERS LLC', daysAgo(3), 155000, 1, [contact('Ray', 'Coles', [{ number: '7575550101', type: 'wireless', do_not_call: false }], [{ address: 'Ray@TidewaterHB.com', verification_status: 'very_likely_deliverable' }])]), { _fips: '51710' }),
+      Object.assign(prop('p2', '40 Bay Ave', 'Hampton', 'TIDEWATER HOME BUYERS LLC', daysAgo(9), 129000, 1, []), { _fips: '51650' }),
+      Object.assign(prop('p3', '9 River Rd', 'Richmond', 'SMITH, KAREN', daysAgo(5), 210000, 1, [contact('Karen', 'Smith', [{ number: '8045550199', type: 'landline', do_not_call: true }], [])], '9 MAIN ST, RICHMOND, VA 23220'), { _fips: '51760' })
+    ],
+    hard: [Object.assign(prop('p4', '77 Oak Ct', 'Chesapeake', 'FLIPRIGHT VENTURES LLC', daysAgo(4), 98000, 1, [contact('Dana', 'Reyes', [{ number: '7575550177', type: 'wireless', do_not_call: false }], [{ address: 'dana@flipright.co' }])]), { _fips: '51550' })],
+    land: [
+      Object.assign(prop('p5', 'Lot 4 Shore Dr', 'Elizabeth City', 'COASTAL NEW HOMES BUILDERS INC', daysAgo(6), 45000, 9, [contact('Lee', 'Park', [], [{ address: 'lee@coastalnewhomes.com' }])]), { _fips: '37139' }),
+      Object.assign(prop('p6', 'Lot 5 Shore Dr', 'Elizabeth City', 'COASTAL NEW HOMES BUILDERS INC', daysAgo(6), 47000, 9, []), { _fips: '37139' })
+    ]
+  };
+  dmSearchBodies = [];
+  g.saveSettings({ INTAKE_DM_ON: 'TRUE', INTAKE_COUNTY_ON: 'FALSE', INTAKE_CASH_ON: 'FALSE', INTAKE_SHEET_ON: 'FALSE', INTAKE_GMAIL_ON: 'FALSE', INTAKE_FORM_ON: 'FALSE' });
+  const r = g.runBuyerIntake();
+  assert.strictEqual(r.results.dealmachine.status, 'ok', JSON.stringify(r.results.dealmachine));
+  assert.strictEqual(r.results.dealmachine.added, 4, JSON.stringify(r.results.dealmachine));
+  // request shape
+  const b0 = dmSearchBodies[0];
+  assert.strictEqual(b0.anchor, 'properties'); assert.strictEqual(b0.contact_audience, 'owners');
+  assert.strictEqual(b0.locations.length, 15, 'max 15 locations per request');
+  assert(dmSearchBodies.some(b => b.locations.length === 7), '22 counties split 15 + 7');
+  const lsd = b0.filters.find(x => x.filter_id === 'last_sale_date');
+  assert.strictEqual(JSON.stringify(lsd.value), JSON.stringify({ value: 14, unit: 'days', direction: 'ago', comparison: 'less_than' }));
+  assert(b0.filters.some(x => x.filter_id === 'num_mortgages' && x.value === 0 && x.operator === 'equals'));
+  assert(b0.filters.some(x => x.filter_id === 'has_absentee_owners' && x.value === true));
+  const land = dmSearchBodies.find(b => b.filters.some(x => x.filter_id === 'additional_property_types'));
+  assert.strictEqual(JSON.stringify(land.filters.find(x => x.filter_id === 'additional_property_types').value), '[101]', 'residential land only');
+  assert(land.filters.some(x => x.filter_id === 'ppm_num_properties_owned_by_owner' && x.operator === 'greater_than_or_equal' && x.value === 2));
+  assert(!land.filters.some(x => x.filter_id === 'has_absentee_owners'));
+  // leads
+  const inv = g.listInvestors();
+  const tw = inv.find(i => i.company === 'Tidewater Home Buyers LLC');
+  assert(tw, 'LLC grouped'); assert.strictEqual(tw.purchaseCount, 2);
+  assert.strictEqual(tw.firstName, 'Ray'); assert.strictEqual(tw.email, 'ray@tidewaterhb.com'); assert.strictEqual(tw.phone, '(757) 555-0101');
+  assert.strictEqual(tw.markets, 'Norfolk, Hampton'); assert(/Cash Buyer/.test(tw.categories)); assert.strictEqual(tw.status, 'Pending Review');
+  assert(/with cash/.test(tw.criteria));
+  const karen = inv.find(i => i.lastName === 'Smith' && i.firstName === 'Karen');
+  assert.strictEqual(karen.phone, '', 'Do-Not-Call phone not stored as the contact number');
+  assert(/Do-Not-Call/.test(karen.notes));
+  const fr = inv.find(i => i.company === 'Flipright Ventures LLC');
+  assert(/with hard money/.test(fr.criteria), fr.criteria);
+  const coastal = inv.find(i => i.company === 'Coastal New Homes Builders Inc');
+  assert(coastal, 'land buyer added'); assert.strictEqual(coastal.purchaseCount, 2);
+  assert(/Developer/.test(coastal.categories) && /Cash Buyer/.test(coastal.categories), coastal.categories);
+  assert.strictEqual(coastal.propertyTypes, 'Land');
+  assert(/^New-construction \/ land buyer\. Bought 2 properties \(2 land\/lots\)/.test(coastal.criteria), coastal.criteria);
+  assert.strictEqual(g.getIntakeStatus().dm.creditsThisMonth, 12, 'credits tracked from API response');
+});
+
+step('DealMachine: twice-a-day runs never re-add the same sale; a new purchase extends history', () => {
+  const r = g.runBuyerIntake();
+  assert.strictEqual(r.results.dealmachine.added + r.results.dealmachine.updated + r.results.dealmachine.duplicate, 0, JSON.stringify(r.results.dealmachine));
+  dmData.cash.push(Object.assign(prop('p9', '5 Pine St', 'Portsmouth', 'TIDEWATER HOME BUYERS LLC', daysAgo(0), 140000, 1, []), { _fips: '51740' }));
+  const r2 = g.runBuyerIntake();
+  assert.strictEqual(r2.results.dealmachine.updated, 1, JSON.stringify(r2.results.dealmachine));
+  const tw = g.listInvestors().filter(i => i.company === 'Tidewater Home Buyers LLC');
+  assert.strictEqual(tw.length, 1); assert.strictEqual(tw[0].purchaseCount, 3);
+  assert(/^5 Pine St, Portsmouth/.test(tw[0].purchases), tw[0].purchases);
+});
+
+step('DealMachine: per-run limit is shared fairly so land buyers still get searched; monthly cap stops pulls', () => {
+  dmSearchBodies = [];
+  g.saveSettings({ INTAKE_DM_MAX_PER_RUN: '3' });
+  g.runBuyerIntake();
+  const kinds = dmSearchBodies.map(b => b.filters.some(x => x.filter_id === 'additional_property_types') ? 'land' : b.filters.some(x => x.filter_id === 'is_mortgage_1_private_lender') ? 'hard' : 'cash');
+  assert(kinds.includes('land') && kinds.includes('hard') && kinds.includes('cash'), kinds.join());
+  assert(dmSearchBodies.every(b => b.per_page <= 1), 'per-kind share of 3');
+  g.saveSettings({ INTAKE_DM_MAX_PER_RUN: '100', INTAKE_DM_MONTHLY_CAP: '5' });
+  dmSearchBodies = [];
+  const r = g.runBuyerIntake();
+  assert.strictEqual(dmSearchBodies.length, 0, 'over the monthly cap: no paid searches');
+  assert(/Monthly credit limit/.test(r.results.dealmachine.note), r.results.dealmachine.note);
+  g.saveSettings({ INTAKE_DM_MONTHLY_CAP: '1500' });
+});
+
+step('DealMachine: free preview counts + friendly errors', () => {
+  const pv = g.previewDealMachine();
+  assert.strictEqual(pv.cash, 40 * 22); assert.strictEqual(pv.land, 7 * 22); assert.strictEqual(pv.counties, 22);
+  const keep = M.fetchHandler;
+  M.fetchHandler = (url, o) => url.indexOf('/properties/search') > -1 ? { code: 402, body: { error: { code: 'insufficient_credits' } } } : keep(url, o);
+  const r = g.runBuyerIntake();
+  assert.strictEqual(r.results.dealmachine.status, 'error');
+  assert(/out of data credits/.test(r.results.dealmachine.note));
+  M.fetchHandler = keep;
+});
+
+step('Norfolk county records (free): newest dataset found, company buyers kept, land buyers tagged Developer', () => {
+  const nf = [
+    { parcel_id: '1', grantee: 'Red Property Llc', transfer_date: daysAgo(4) + 'T00:00:00.000', consideration: '146901', property_street_number: '316', property_street_name: 'Poplar', property_street_type: 'AVE', property_city: 'Norfolk', property_use: 'Single Family - Detached' },
+    { parcel_id: '2', grantee: 'New Beginnings Development Llc', transfer_date: daysAgo(6) + 'T00:00:00.000', consideration: '42000', property_street_number: '139', property_street_name: 'Filbert', property_street_type: 'ST', property_city: 'Norfolk', property_use: 'Vacant Land' },
+    { parcel_id: '3', grantee: 'Jones Mary', transfer_date: daysAgo(2) + 'T00:00:00.000', consideration: '300000', property_street_number: '1', property_street_name: 'Main', property_city: 'Norfolk', property_use: 'Single Family - Detached' },
+    { parcel_id: '4', grantee: 'Tidewater Home Buyers LLC', transfer_date: daysAgo(1) + 'T00:00:00.000', consideration: '99000', property_street_number: '8', property_street_name: 'Lee', property_city: 'Norfolk', property_use: 'Duplex' }
+  ];
+  let queried = '';
+  M.fetchHandler = (url, o) => {
+    if (url.indexOf('data.norfolk.gov/api/views/metadata') > -1) return { code: 200, body: [{ id: 'old1-fy26', name: 'Property Assessment and Sales - FY26' }, { id: 'qva7-tzrf', name: 'Property Assessment and Sales - FY27' }, { id: 'x', name: 'Delinquent Property Taxes' }] };
+    if (url.indexOf('data.norfolk.gov/resource/') > -1) { queried = url; return { code: 200, body: nf }; }
+    return dmHandler(url, o);
+  };
+  g.saveSettings({ INTAKE_COUNTY_ON: 'TRUE', INTAKE_DM_ON: 'FALSE' });
+  const r = g.runBuyerIntake();
+  assert.strictEqual(r.results.county.status, 'ok', JSON.stringify(r.results.county));
+  assert(queried.indexOf('/resource/qva7-tzrf.json') > -1, 'uses newest fiscal-year dataset');
+  assert(decodeURIComponent(queried).indexOf("transfer_date >= '") > -1);
+  assert.strictEqual(r.results.county.added, 2, JSON.stringify(r.results.county));
+  assert.strictEqual(r.results.county.updated, 1, 'known LLC gets the new purchase added');
+  const inv = g.listInvestors();
+  assert(!inv.some(i => i.lastName === 'Mary' || i.firstName === 'Jones'), 'individual homebuyers skipped by default');
+  const nb = inv.find(i => i.company === 'New Beginnings Development Llc');
+  assert(/Developer/.test(nb.categories)); assert.strictEqual(nb.propertyTypes, 'Land');
+  assert.strictEqual(nb.status, 'Pending Review'); assert.strictEqual(nb.email, '');
+  assert.strictEqual(g.listInvestors().filter(i => i.company === 'Tidewater Home Buyers LLC').length, 1, 'same company across sources = one buyer');
+  assert.strictEqual(g.runBuyerIntake().results.county.added, 0, 'each recorded sale processed once');
+});
+
+step('morning + night schedule', () => {
+  g.enableDailyIntake(6, 19);
+  const t = M.triggers.filter(x => x.getHandlerFunction() === 'runBuyerIntake');
+  assert.strictEqual(t.length, 2);
+  assert(t.some(x => /@6$/.test(x.kind)) && t.some(x => /@19$/.test(x.kind)), t.map(x => x.kind).join());
+  g.disableDailyIntake();
+  assert.strictEqual(M.triggers.filter(x => x.getHandlerFunction() === 'runBuyerIntake').length, 0);
+  assert(!M.isLocked());
+});
+
 console.log('\n' + passed + ' passed' + (process.exitCode ? ', SOME FAILED' : '') + '\n');
