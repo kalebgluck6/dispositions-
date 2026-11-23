@@ -50,6 +50,7 @@ function pofFolder_() {
 
 /** Upload a proof-of-funds document for a buyer (status becomes Pending until verified). */
 function uploadPof(investorId, fileName, mimeType, base64, amount, expires) {
+  requireRole_('Rep');
   var inv = findBy_(SHEET.INVESTORS, 'id', investorId);
   if (!inv) throw new Error('Buyer not found.');
   var file = pofFolder_().createFile(blobFromBase64_(base64, mimeType, investorId + ' — POF — ' + (fileName || 'document')));
@@ -65,6 +66,7 @@ function uploadPof(investorId, fileName, mimeType, base64, amount, expires) {
 
 /** Mark POF verified (sets amount / expiry; default expiry = today + POF_VALID_DAYS). */
 function verifyPof(investorId, amount, expires) {
+  requireRole_('Rep');
   return withLock_(function () {
     var inv = findBy_(SHEET.INVESTORS, 'id', investorId);
     if (!inv) throw new Error('Buyer not found.');
@@ -80,6 +82,7 @@ function verifyPof(investorId, amount, expires) {
 
 /** outcome: 'closed' | 'default'. Updates counts, reliability and last deal bought. */
 function recordBuyerOutcome(investorId, outcome, dealId, note) {
+  requireRole_('Rep');
   return withLock_(function () { return recordBuyerOutcome_(investorId, outcome, dealId, note); });
 }
 
@@ -100,6 +103,7 @@ function recordBuyerOutcome_(investorId, outcome, dealId, note) {
 }
 
 function setBuyerRating(investorId, rating) {
+  requireRole_('Rep');
   return withLock_(function () {
     var inv = findBy_(SHEET.INVESTORS, 'id', investorId);
     if (!inv) throw new Error('Buyer not found.');
@@ -111,6 +115,7 @@ function setBuyerRating(investorId, rating) {
 
 /** Everything the Verification Center screen needs. */
 function getVerificationCenter() {
+  requireRole_('Viewer');
   var invs = readTable_(SHEET.INVESTORS).rows.filter(function (i) { return str_(i.status) !== 'Inactive'; });
   var activeOffers = {};
   readTable_(SHEET.OFFERS).rows.forEach(function (o) {

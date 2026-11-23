@@ -181,6 +181,22 @@ const seed = `
   const mag = listDeals().find(d => d.address === '1847 Magnolia Ridge Dr');
   updateObject_('Deals', findBy_('Deals', 'id', mag.id)._row, { stageUpdated: new Date(Date.now() - 9 * 86400000) });
   readTable_('Responses').rows.forEach(r => updateObject_('Responses', r._row, { received: new Date(Date.now() - 4 * 86400000) }));
+  // ---- phase 2 demo: revenue, pass reasons, price drop, land activity ----
+  const daysAgoD = (n) => new Date(Date.now() - n * 86400000);
+  const willow = listDeals().find(d => d.address === '7 Willow Bend');
+  updateObject_('Deals', findBy_('Deals', 'id', willow.id)._row, { contractPrice: 58000, rep: 'Jordan Hale <jordan@samedayinvestments.com>', firstDistributed: daysAgoD(70), buyerSelectedOn: daysAgoD(62), soldDate: daysAgoD(48), stage: 'Closed', buyerInvestorId: invOf('rob@ellisequity.com').id });
+  updateObject_('Deals', findBy_('Deals', 'id', bay.id)._row, { contractPrice: 228000, rep: 'Kim Ortiz <kim@samedayinvestments.com>', firstDistributed: daysAgoD(30) });
+  setDealStage(bay.id, 'Closed', { soldPrice: 262000 });
+  updateObject_('Deals', findBy_('Deals', 'id', bay.id)._row, { buyerSelectedOn: daysAgoD(21), soldDate: daysAgoD(3) });
+  updateObject_('Deals', findBy_('Deals', 'id', oak.id)._row, { firstDistributed: daysAgoD(6) });
+  [['leah.kim@outlook.com', 'Price'], ['tom@beckerbuilders.com', 'Location'], ['priya@northsidehomes.com', 'Condition'], ['sasha@grantre.com', 'Numbers']].forEach(([e, why]) => {
+    const i = invOf(e); if (i) logResponse({ dealId: oak.id, investorId: i.id, type: 'Not Interested', passReason: why, message: 'Pass — ' + why.toLowerCase() });
+  });
+  saveDeal(Object.assign({}, getDeal(mag.id), { askingPrice: 175000 }));
+  updateObject_('Investors', invOf('lee@coastalnewhomes.com')._row, { purchases: 'Lot 12 Riverside Dr, Elizabeth City — $48,000, cash · land (Nov 18, 2026); Lot 13 Riverside Dr, Elizabeth City — $49,500, cash · land (Nov 18, 2026); Lot 2 Shore Ln, Suffolk — $52,000, cash · land (Sep 9, 2026)', purchaseCount: 3 });
+  updateObject_('Investors', invOf('tom@beckerbuilders.com')._row, { purchases: 'Lot 7 Kings Fork Rd, Suffolk — $61,000, cash · land (Oct 2, 2026); Lot 8 Kings Fork Rd, Suffolk — $61,000, cash · land (Oct 2, 2026); Lot 9 Kings Fork Rd, Suffolk — $63,000, cash · land (Oct 20, 2026); Lot 3 Bells Mill Rd, Chesapeake — $70,000, cash · land (Aug 1, 2026)', purchaseCount: 4 });
+  saveSettings({ MARKETS: 'Hampton Roads, Norfolk, Suffolk, Chesapeake, Richmond, Elizabeth City, Atlanta Metro, Macon, Savannah' });
+  runNightly();
   M.sent = [];
   M.sent = [];
   window.__SEEDED__ = true;

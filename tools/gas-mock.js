@@ -165,7 +165,7 @@
   };
   MOCK.isLocked = () => lockHeld;
   root.Session = {
-    getActiveUser: () => ({ getEmail: () => MOCK.user }),
+    getActiveUser: () => ({ getEmail: () => (MOCK.activeUser !== undefined ? MOCK.activeUser : MOCK.user) }),
     getEffectiveUser: () => ({ getEmail: () => MOCK.user }),
     getScriptTimeZone: () => 'America/New_York'
   };

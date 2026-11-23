@@ -85,6 +85,7 @@ function remainingQuota_() {
 
 /** Settings + option lists for the web app. */
 function getSettings() {
+  requireRole_('Viewer');
   var s = getSettings_();
   return {
     values: s,
@@ -110,6 +111,7 @@ function getSettings() {
 
 /** Saves editable settings. TEST_MODE can only be changed via setTestMode(). */
 function saveSettings(values) {
+  requireRole_('Owner');
   return withLock_(function () {
     var allowed = DEFAULT_SETTINGS.map(function (d) { return d[0]; })
       .filter(function (k) { return ['TEST_MODE', 'DRIVE_FOLDER_ID', 'BUYER_FORM_ID', 'BUYER_FORM_URL'].indexOf(k) === -1; });
@@ -127,6 +129,7 @@ function saveSettings(values) {
  * Switches between TEST and LIVE mode. Going live requires typing GO LIVE.
  */
 function setTestMode(enabled, confirmation) {
+  requireRole_('Owner');
   return withLock_(function () {
     if (!enabled) {
       if (String(confirmation || '').trim().toUpperCase() !== 'GO LIVE') {

@@ -144,10 +144,12 @@ function rankBuyers_(deal, investors) {
 // ---------- client API ----------
 
 function matchBuyers(dealId) {
+  requireRole_('Viewer');
   var deal = getDealRow_(dealId);
   var all = readTable_(SHEET.INVESTORS).rows;
   var active = all.filter(function (i) { return (str_(i.status) || 'Active') === 'Active' && !bool_(i.optOut) && isEmail_(i.email); });
   var ranked = rankBuyers_(deal, active);
+  var stats = buyerStats_(loadAll_());
   var counts = { strong: 0, good: 0, weak: 0, no: 0 };
   ranked.forEach(function (m) { counts[m.fit]++; });
   return toClient_({
@@ -161,7 +163,10 @@ function matchBuyers(dealId) {
       return {
         id: i.id, name: investorName_(i), company: str_(i.company), email: str_(i.email), tier: str_(i.tier),
         score: m.score, fit: m.fit, reasons: m.reasons, blockers: m.blockers, pofStatus: pofStatus_(i),
-        reliability: reliabilityOf_(i), markets: str_(i.markets), maxPrice: i.maxPrice, dealsReceived: Number(i.dealsReceived) || 0
+        reliability: reliabilityOf_(i), markets: str_(i.markets), maxPrice: i.maxPrice, dealsReceived: Number(i.dealsReceived) || 0,
+        heat: stats[i.id] ? stats[i.id].heat : 0,
+        // Best Buyer Predictor: fit (60%) blended with real behavior (heat, 40%)
+        likelihood: m.fit === 'no' ? 0 : Math.round(0.6 * m.score + 0.4 * (stats[i.id] ? stats[i.id].heat : 0))
       };
     })
   });

@@ -365,6 +365,10 @@ const I = {
   bell: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
   pipe: '<rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="11" rx="1"/><rect x="17" y="4" width="4" height="7" rx="1"/>',
   key: '<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>',
+  chart: '<path d="M3 3v18h18"/><path d="M7 16V9M12 16V5M17 16v-4"/>',
+  layers: '<path d="m12 2 10 5-10 5L2 7l10-5z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/>',
+  land: '<path d="M3 20h18M5 20l4-9 3 5 3-3 4 7"/><circle cx="17" cy="6" r="2"/>',
+  map: '<path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3z"/><path d="M9 3v15M15 6v15"/>',
   mail: '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><path d="m22 6-10 7L2 6"/>'
 };
 const icon = (n) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + I[n] + '</svg>';
@@ -391,6 +395,8 @@ const NAV = [
   ['Buyer Management'],
   ['investors', 'Investors', 'users'],
   ['intake', 'New Buyers', 'star'],
+  ['tiers', 'Buyer Tiers', 'layers'],
+  ['land', 'Land Buyers & Builders', 'land'],
   ['matching', 'Buyer Matching', 'match'],
   ['verification', 'Buyer Verification', 'shield'],
   ['import', 'Import Investors', 'upload'],
@@ -399,11 +405,14 @@ const NAV = [
   ['responses', 'Responses', 'inbox'],
   ['offers', 'Offers & Negotiations', 'offer'],
   ['followups', 'Follow-Up Center', 'bell'],
+  ['analytics', 'Distribution Analytics', 'chart'],
   ['Operations'],
   ['closing', 'Contract & Closing Tracker', 'key'],
+  ['markets', 'Market Management', 'map'],
+  ['ceo', 'Performance Reports', 'dash'],
   ['settings', 'Settings', 'gear']
 ];
-const TITLES = { dashboard: 'Dashboard', deals: 'Deals', dealForm: 'Submit a Deal', deal: 'Deal', investors: 'Investor Network', import: 'Import Investors', responses: 'Responses & Interested Buyers', jobs: 'Distribution History', settings: 'Settings', intake: 'New Buyers', pipeline: 'Disposition Pipeline', matching: 'Smart Buyer Matching', verification: 'Buyer Verification Center', offers: 'Offers & Negotiations', followups: 'Follow-Up Center', closing: 'Contract & Closing Tracker' };
+const TITLES = { dashboard: 'Dashboard', deals: 'Deals', dealForm: 'Submit a Deal', deal: 'Deal', investors: 'Investor Network', import: 'Import Investors', responses: 'Responses & Interested Buyers', jobs: 'Distribution History', settings: 'Settings', intake: 'New Buyers', pipeline: 'Disposition Pipeline', matching: 'Smart Buyer Matching', verification: 'Buyer Verification Center', offers: 'Offers & Negotiations', followups: 'Follow-Up Center', closing: 'Contract & Closing Tracker', tiers: 'Buyer Tiers', land: 'Land Buyers & Builders', analytics: 'Distribution Analytics', markets: 'Market Management', ceo: 'Performance Reports — CEO Dashboard' };
 
 function go(view, params) {
   S.view = view; S.params = params || {};
@@ -413,6 +422,7 @@ function go(view, params) {
   if (view === 'offers') S.offersAll = null;
   if (view === 'verification') S.ver = null;
   if (view === 'followups') S.fu = null;
+  if (['ceo', 'analytics', 'tiers', 'markets', 'land'].includes(view)) S[view + 'Data'] = null;
   if (view === 'matching') { S.matchData = null; if (S.params.id) S.matchDeal = S.params.id; }
   window.scrollTo(0, 0);
   render();
@@ -434,7 +444,7 @@ function renderChrome() {
     ? '<span class="mode-pill test" data-go="settings" title="All emails are redirected to ' + esc(st.values.TEST_EMAIL) + '"><span class="dot"></span>Test Mode</span>'
     : '<span class="mode-pill live" data-go="settings" title="Emails go to real investors"><span class="dot"></span>Live</span>';
   $('#quota').textContent = st.quota >= 0 ? st.quota.toLocaleString() + ' emails left today' : '';
-  $('#sidefoot').innerHTML = esc(st.user || '') + '<br><a href="' + esc(st.spreadsheetUrl) + '" target="_blank">Open database sheet ↗</a><br>v' + esc(st.version);
+  $('#sidefoot').innerHTML = esc((S.me && S.me.email) || st.user || '') + (S.me ? ' · <b style="color:var(--accent-soft)">' + esc(S.me.role) + '</b>' : '') + '<br><a href="' + esc(st.spreadsheetUrl) + '" target="_blank">Open database sheet ↗</a><br>v' + esc(st.version);
   $('#page-title').textContent = S.view === 'dealForm' && S.params.id ? 'Edit Deal' : (TITLES[S.view] || '');
 }
 
@@ -599,6 +609,10 @@ VIEWS.dealForm = {
       field('Contract price (seller)', moneyInp('contractPrice', f.contractPrice), 'Private. Used to calculate your assignment fee on each offer.') +
       field('Offer deadline', inp('offerDeadline', f.offerDeadline ? String(f.offerDeadline).replace(' ', 'T').slice(0, 16) : '', 'datetime-local'), 'Buyers get a reminder 24h before') +
       field('Disposition rep', repSelect(f.rep)) +
+      '</div><div class="bd" style="padding-top:0"><div class="section-title">Land: buildability & development potential</div><div class="grid g4">' +
+      field('Road frontage (ft)', inp('roadFrontage', f.roadFrontage, 'number', 'min="0"')) + field('Road access', inp('roadAccess', f.roadAccess, 'text', 'placeholder="Paved state road"')) + field('Utilities', inp('utilities', f.utilities, 'text', 'placeholder="Public water, sewer at road"')) + field('Flood zone', inp('floodZone', f.floodZone, 'text', 'placeholder="X (minimal)"')) +
+      field('Wetlands', inp('wetlands', f.wetlands, 'text', 'placeholder="None mapped"')) + field('Soil / septic', inp('soilSeptic', f.soilSeptic, 'text', 'placeholder="Perc approved"')) + field('Potential lots', inp('potentialLots', f.potentialLots, 'number', 'min="0"')) + field('Density', inp('density', f.density, 'text', 'placeholder="2 units/ac"')) +
+      '</div>' + field('Zoning restrictions', inp('zoningNotes', f.zoningNotes, 'text', 'placeholder="Min lot size, setbacks, overlays…"')) + '</div><div class="bd grid g3" style="display:none">' +
       '</div><div class="bd stack" style="padding-top:0">' +
       field('Internal notes', area('internalNotes', f.internalNotes, 'rows="2" placeholder="Seller info, lockbox code, title company… (never emailed)"'), 'Private — never sent to investors.') +
       '</div></div></div>' +
@@ -797,6 +811,7 @@ VIEWS.deal = {
       '<div class="row">' + statusPill(d.status) + '</div></div>' +
       stageStepper(d) +
       '<div class="row" style="margin-top:18px">' + (!['Sold', 'Dead'].includes(d.status) ? '<button class="btn-send" data-act="distribute" data-id="' + esc(d.id) + '">' + icon('send') + 'Send to Investor Network</button>' : '') +
+      (d.priceReduced && !['Sold', 'Dead'].includes(d.status) ? '<button class="btn" data-act="priceDrop" data-id="' + esc(d.id) + '" style="border-color:var(--amber);color:var(--amber)">Send price-drop alert (' + money(d.previousPrice) + ' → ' + money(d.askingPrice) + ')</button>' : '') +
       '<button class="btn" data-go="dealForm" data-id="' + esc(d.id) + '">' + icon('edit') + 'Edit Deal</button>' +
       '<div style="flex:1"></div><span class="small muted">Mark as:</span>' + L().dealStatuses.map(s => '<button class="btn sm' + (d.status === s ? ' primary' : '') + '" data-act="setStatus" data-id="' + esc(d.id) + '" data-val="' + s + '"' + (d.status === s ? ' disabled' : '') + '>' + s + '</button>').join('') + '</div></div>' +
       '<div class="metric-strip" style="border-radius:0;border-left:0;border-right:0;border-bottom:0">' +
@@ -834,10 +849,10 @@ function loadPreview(id, frame) {
 
 function responsesTable(rows, showDeal) {
   if (!rows.length) return '<div class="card empty"><h4>No responses yet</h4>Replies to deal emails are logged automatically when you scan the inbox (or every 15 minutes with auto-tracking on).</div>';
-  return '<div class="table-wrap"><table class="t"><thead><tr><th>Received</th><th>Investor</th>' + (showDeal ? '<th>Deal</th>' : '') + '<th>Type</th><th>Offer</th><th>Message</th><th>Follow-up</th><th></th></tr></thead><tbody>' +
+  return '<div class="table-wrap"><table class="t"><thead><tr><th>Received</th><th>Investor</th>' + (showDeal ? '<th>Deal</th>' : '') + '<th>Type</th><th>Offer / reason</th><th>Message</th><th>Follow-up</th><th></th></tr></thead><tbody>' +
     rows.map(r => '<tr><td class="nowrap">' + fmtDT(r.received) + '<div class="small muted">' + esc(r.source) + '</div></td><td>' + esc(r.investorName) + '<div class="small muted">' + esc(r.investorEmail) + '</div></td>' +
       (showDeal ? '<td><a data-go="deal" data-id="' + esc(r.dealId) + '" style="cursor:pointer">' + esc(r.property || r.dealId || '—') + '</a><div class="small muted">' + esc(r.dealId) + '</div></td>' : '') +
-      '<td><span class="tag" style="' + (r.type === 'Interested' || r.type === 'Offer' ? 'color:var(--accent-2);border-color:var(--green-600)' : '') + '">' + esc(r.type) + '</span></td><td class="nowrap">' + (isNum(r.offerAmount) && r.offerAmount !== '' ? money(r.offerAmount) : '—') + '</td>' +
+      '<td><span class="tag" style="' + (r.type === 'Interested' || r.type === 'Offer' ? 'color:var(--accent-2);border-color:var(--green-600)' : '') + '">' + esc(r.type) + '</span></td><td class="nowrap">' + (isNum(r.offerAmount) && r.offerAmount !== '' ? money(r.offerAmount) : r.passReason ? '<span class="small muted">Passed: </span>' + esc(r.passReason) : '—') + '</td>' +
       '<td style="max-width:320px"><div class="small" style="white-space:pre-wrap;max-height:60px;overflow:hidden" title="' + esc(r.message) + '">' + esc(r.message) + '</div>' + (r.notes ? '<div class="small muted">Note: ' + esc(r.notes) + '</div>' : '') + '</td>' +
       '<td><select data-change="respFollow" data-id="' + esc(r.id) + '" style="min-width:150px">' + L().followUpStatuses.map(s => '<option' + (s === r.followUp ? ' selected' : '') + '>' + esc(s) + '</option>').join('') + '</select></td>' +
       '<td><button class="btn sm ghost" data-act="respNote" data-id="' + esc(r.id) + '" title="Add note">' + icon('edit') + '</button></td></tr>').join('') + '</tbody></table></div>';
@@ -855,10 +870,10 @@ function jobsTable(rows, showDeal) {
 
 // ---------- DISTRIBUTION WIZARD ----------
 let DIST = null;
-function openDistribute(dealId) {
+function openDistribute(dealId, preset) {
   const d = S.deals.find(x => x.id === dealId);
   if (!d) return;
-  DIST = { deal: d, step: 1, audience: { mode: 'smart', waves: true, includeOthers: false, minScore: +S.settings.values.MATCH_MIN_SCORE || 50, tiers: [], categories: [], markets: [], investorIds: [], matchCriteria: false, excludeAlreadySent: d.timesDistributed > 0 }, preview: null, prepared: null, pickQ: '' };
+  DIST = { deal: d, step: 1, preset: preset || '', audience: { mode: preset || 'smart', waves: true, includeOthers: false, minScore: +S.settings.values.MATCH_MIN_SCORE || 50, tiers: [], categories: [], markets: [], investorIds: [], matchCriteria: false, excludeAlreadySent: d.timesDistributed > 0 }, preview: null, prepared: null, pickQ: '' };
   renderDist();
 }
 function renderDist() {
@@ -869,7 +884,8 @@ function renderDist() {
   if (DIST.step === 1) {
     const opt = (m, t, s) => '<div class="option' + (a.mode === m ? ' on' : '') + '" data-act="distMode" data-val="' + m + '"><b>' + t + '</b><span>' + s + '</span></div>';
     body += '<div class="grid" style="grid-template-columns:1.25fr 1fr;align-items:start"><div class="stack">' +
-      '<div class="grid g4">' + opt('smart', 'Smart match ★', 'Buyers whose buy box fits, Tier 1 first') + opt('all', 'All active investors', 'Everyone active & subscribed') + opt('segments', 'By tier / category', 'Target investor segments') + opt('selected', 'Hand-pick', 'Choose specific investors') + '</div>';
+      (DIST.preset ? '<div class="grid g2">' + (DIST.preset === 'priceDrop' ? opt('priceDrop', 'Price-reduction alert', 'Everyone who received it + matched buyers. Subject: PRICE REDUCED ' + money(d.previousPrice) + ' → ' + money(d.askingPrice)) : opt('recovery', 'Dead-deal recovery', 'The next ring of matched buyers who haven\'t received it yet')) + opt('smart', 'Normal smart match', 'Switch back to a regular send') + '</div>' : '') +
+      '<div class="grid g4"' + (DIST.preset ? ' style="display:none"' : '') + '>' + opt('smart', 'Smart match ★', 'Buyers whose buy box fits, Tier 1 first') + opt('all', 'All active investors', 'Everyone active & subscribed') + opt('segments', 'By tier / category', 'Target investor segments') + opt('selected', 'Hand-pick', 'Choose specific investors') + '</div>';
     if (a.mode === 'segments') {
       body += '<div><div class="section-title">Tiers</div>' + chips('d_tiers', L().tiers, a.tiers) + '</div>' +
         '<div><div class="section-title">Categories</div>' + chips('d_categories', L().categories, a.categories) + '</div>' +
@@ -1056,7 +1072,15 @@ function investorModal(id) {
     '<button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn primary" data-act="saveInvestor" data-id="' + esc(id || '') + '">Save Investor</button>';
   openModal(id ? 'Edit Investor' : 'Add Investor', body, foot, {
     mount() {
-      if (id) api('getInvestorHistory', id).then(h => {
+      if (id) api('getInvestorProfile', id).then(pr => {
+        const el = $('#invHistory'); if (!el) return;
+        const st = pr.stats;
+        el.innerHTML = '<div class="metric-strip" style="margin-bottom:12px">' + [['Heat', st.heat], ['Deals received', st.dealsReceived], ['Response rate', st.responseRate + '%'], ['Interested', st.interested], ['Offers', st.offers], ['Closed', st.closed], ['Close rate', st.closeRate + '%'], ['Failed', st.fellThrough]]
+          .map(x => '<div><div class="l">' + x[0] + '</div><div class="v" style="font-size:19px">' + x[1] + '</div></div>').join('') + '</div>' +
+          (pr.history.length ? '<table class="t"><thead><tr><th>Deal</th><th>Sent</th><th>Response</th><th>Outcome</th></tr></thead><tbody>' + pr.history.slice(0, 25).map(hh => '<tr><td><a data-go="deal" data-id="' + esc(hh.dealId) + '" style="cursor:pointer">' + esc(hh.property) + '</a></td><td class="small nowrap">' + (hh.sentAt ? fmtDate(hh.sentAt) : '—') + '</td><td class="small">' +
+            (hh.responses.map(r => esc(r.type) + (r.passReason ? ' (' + esc(r.passReason) + ')' : '')).join(', ') || '—') + (hh.offers.length ? '<div>Offer ' + hh.offers.map(o => money(o.amount) + ' · ' + esc(o.status)).join(', ') + '</div>' : '') + '</td><td><span class="tag" style="' + (/Bought|Selected/.test(hh.outcome) ? 'color:var(--accent-2);border-color:var(--green-600)' : '') + '">' + esc(hh.outcome) + '</span></td></tr>').join('') + '</tbody></table>' : '<div>No deals received yet.</div>');
+      }).catch(fail);
+      if (false) api('getInvestorHistory', id).then(h => {
         const el = $('#invHistory'); if (!el) return;
         el.innerHTML = (h.sends.length ? '<div style="margin-bottom:8px">Received <b style="color:var(--text)">' + h.sends.length + '</b> deals: ' + h.sends.slice(0, 15).map(s => '<a data-go="deal" data-id="' + esc(s.dealId) + '" style="cursor:pointer">' + esc(s.property) + '</a> (' + fmtDate(s.sentAt) + ')').join(', ') + '</div>' : '<div>No deals received yet.</div>') +
           (h.responses.length ? '<div>Responses: ' + h.responses.slice(0, 15).map(r => esc(r.type) + ' — ' + esc(r.property || r.dealId) + ' (' + fmtDate(r.received) + ')').join('; ') + '</div>' : '');
@@ -1224,8 +1248,10 @@ function stageStepper(d) {
 }
 function matchTable(rows, compact) {
   if (!rows.length) return '<div class="card empty"><h4>No matching buyers</h4>No active buyer\'s buy box fits this deal. Add zip codes, markets and property types to buyer profiles, or approve buyers from New Buyers.</div>';
-  return '<div class="table-wrap"><table class="t"><thead><tr><th>Match</th><th>Buyer</th><th>Tier</th><th>Why</th><th>POF</th><th>Reliability</th></tr></thead><tbody>' +
+  rows = rows.slice().sort((a, b) => (b.likelihood || 0) - (a.likelihood || 0) || b.score - a.score);
+  return '<div class="table-wrap"><table class="t"><thead><tr><th>Match</th><th title="Best Buyer Predictor: buy-box fit blended with real behavior (heat)">Likely to buy</th><th>Buyer</th><th>Tier</th><th>Why</th><th>POF</th><th>Reliability</th></tr></thead><tbody>' +
     rows.map(m => '<tr class="click" data-act="editInvestor" data-id="' + esc(m.id) + '"><td class="nowrap">' + scoreBadge(m.score) + '<span class="small" style="color:' + (m.fit === 'strong' ? 'var(--accent-2)' : m.fit === 'good' ? 'var(--amber)' : 'var(--muted)') + '">' + esc(m.fit === 'no' ? 'excluded' : m.fit) + '</span></td>' +
+      '<td class="nowrap">' + (m.fit === 'no' ? '—' : '<b>' + (m.likelihood || 0) + '</b><span class="small muted"> · heat ' + (m.heat || 0) + '</span>') + '</td>' +
       '<td><div style="font-weight:600">' + esc(m.name) + '</div><div class="small muted">' + esc(m.company && m.company !== m.name ? m.company + ' · ' : '') + esc(m.email) + '</div></td><td class="tier">' + esc(m.tier || '—') + '</td>' +
       '<td class="small">' + (m.blockers.length ? '<span style="color:#FF9A95">' + esc(m.blockers.join(' · ')) + '</span>' : m.reasons.map(r => '<span class="tag">' + esc(r) + '</span>').join('')) + '</td>' +
       '<td>' + pofChip(m.pofStatus) + '</td><td>' + stars(m.reliability) + '</td></tr>').join('') + '</tbody></table></div>';
@@ -1422,6 +1448,133 @@ function fuTable(items) {
   return '<div style="max-height:360px;overflow:auto"><table class="t"><tbody>' + items.map(i => '<tr><td><span class="tag">' + esc(i.typeLabel) + '</span></td><td><a data-go="deal" data-id="' + esc(i.dealId) + '" style="cursor:pointer">' + esc(i.property) + '</a><div class="small muted">' + esc(i.investorName ? i.investorName + ' · ' : '') + esc(i.detail) + '</div></td></tr>').join('') + '</tbody></table></div>';
 }
 
+// ============================================================
+// PHASE 2: performance, analytics, tiers, markets, land
+// ============================================================
+/** Horizontal bars (single series, one hue): value label at the tip, tooltip on hover. */
+function barList(rows, val, fmt) {
+  const max = Math.max(1, ...rows.map(val));
+  if (!rows.length) return '<div class="empty" style="padding:24px">No data yet.</div>';
+  return '<div role="list" style="display:grid;grid-template-columns:minmax(90px,160px) 1fr;gap:8px 12px;align-items:center">' + rows.map(r => {
+    const v = val(r), w = Math.max(v > 0 ? 1.5 : 0, (v / max) * 100);
+    return '<div class="small" style="color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.name) + '">' + esc(r.name) + '</div>' +
+      '<div role="listitem" aria-label="' + esc(r.name + ': ' + fmt(v)) + '" title="' + esc(r.name + ' — ' + fmt(v) + (r.deals !== undefined ? ' · ' + r.deals + ' deal' + (r.deals === 1 ? '' : 's') : '')) + '" style="display:flex;align-items:center;gap:8px;min-height:22px;cursor:default">' +
+      '<div style="height:16px;width:' + w + '%;background:var(--accent);border-radius:0 4px 4px 0"></div><span class="small" style="color:var(--text);white-space:nowrap">' + fmt(v) + '</span></div>';
+  }).join('') + '</div>';
+}
+/** Columns over time (single series): value on the cap, tooltip on hover. */
+function columns(rows, val, fmt) {
+  const max = Math.max(1, ...rows.map(val));
+  return '<div style="display:flex;align-items:flex-end;gap:14px;height:190px;padding:18px 4px 0;border-bottom:1px solid var(--line-2)">' + rows.map(r => {
+    const v = val(r), h = Math.max(v > 0 ? 2 : 0, (v / max) * 140);
+    return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%" title="' + esc(r.name + ' — ' + fmt(v) + ' · ' + r.deals + ' closed') + '">' +
+      '<span class="small" style="color:var(--text);margin-bottom:4px">' + (v ? fmt(v) : '') + '</span><div style="width:22px;height:' + h + 'px;background:var(--accent);border-radius:4px 4px 0 0"></div></div>';
+  }).join('') + '</div><div style="display:flex;gap:14px;padding:6px 4px 0">' + rows.map(r => '<div class="small muted" style="flex:1;text-align:center">' + esc(r.name.replace(/ \d{4}$/, '')) + '</div>').join('') + '</div>';
+}
+const tableOf = (rows, cols) => '<table class="t"><thead><tr>' + cols.map(c => '<th>' + c[0] + '</th>').join('') + '</tr></thead><tbody>' + rows.map(r => '<tr>' + cols.map(c => '<td>' + c[1](r) + '</td>').join('') + '</tr>').join('') + '</tbody></table>';
+const heatChip = h => { const c = h >= 70 ? 'var(--accent-2)' : h >= 40 ? 'var(--amber)' : 'var(--muted)'; return '<span title="Heat score" style="color:' + c + ';font-weight:700">' + (h >= 70 ? '🔥 ' : '') + h + '</span>'; };
+const loadView = (key, fn, args) => { if (!S[key]) api(fn, ...(args || [])).then(d => { S[key] = d; render(); }).catch(fail); };
+
+// ---------- CEO dashboard ----------
+VIEWS.ceo = {
+  html() {
+    const c = S.ceoData;
+    const range = S.ceoRange || 90;
+    const head = '<div class="toolbar"><span class="muted">Ownership view — no need to ask the team for updates.</span><div style="flex:1"></div><select data-change="ceoRange">' + [[30, 'Last 30 days'], [90, 'Last 90 days'], [180, 'Last 6 months'], [365, 'Last 12 months']].map(o => '<option value="' + o[0] + '"' + (o[0] === range ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>' +
+      '<button class="btn sm" data-act="ceoTable">' + (S.ceoTable ? 'Show charts' : 'Show tables') + '</button></div>';
+    if (!c) return head + '<div class="loading"><span class="spinner"></span> Crunching numbers…</div>';
+    const k = c.kpi, pctf = v => v + '%', T = S.ceoTable;
+    const tile = (l, v, m) => kpi(l, v, m);
+    return head + '<div class="grid g4" style="margin-bottom:14px">' + tile('Assignment revenue', money(k.revenue), k.closedDeals + ' deals closed') + tile('Average assignment fee', k.avgFee === null ? '—' : money(k.avgFee), 'per closed deal') +
+      tile('Deals distributed', k.dealsDistributed, k.activeDeals + ' available now · ' + k.underContract + ' under contract') + tile('Avg time to secure a buyer', k.avgDaysToBuyer === null ? '—' : k.avgDaysToBuyer + ' days', 'first distribution → buyer selected') + '</div>' +
+      '<div class="grid g4" style="margin-bottom:18px">' + tile('Avg offers per deal', k.avgOffersPerDeal, 'on distributed deals') + tile('Distribution → contract', pctf(k.distToContract), 'distributed deals that got a buyer') +
+      tile('Buyer response rate', pctf(k.responseRate), 'buyers who replied to a deal they received') + tile('Buyer → closing', pctf(k.buyerToClosing), 'interested buyers who closed') + '</div>' +
+      '<div class="grid" style="grid-template-columns:1.2fr 1fr;align-items:start;margin-bottom:18px">' +
+      '<div class="card"><div class="hd"><h3>Assignment revenue by month</h3></div><div class="bd">' + (T ? tableOf(c.months, [['Month', r => esc(r.name)], ['Closed', r => r.deals], ['Revenue', r => money(r.revenue)]]) : columns(c.months, r => r.revenue, short$)) + '</div></div>' +
+      '<div class="card"><div class="hd"><h3>Pipeline right now</h3></div><div class="bd">' + (T ? tableOf(c.stages, [['Stage', r => esc(r.stage)], ['Deals', r => r.count]]) : barList(c.stages.map(x => ({ name: x.stage, v: x.count })), r => r.v, v => String(v))) + '</div></div></div>' +
+      '<div class="grid g2" style="align-items:start;margin-bottom:18px">' +
+      '<div class="card"><div class="hd"><h3>Revenue per market</h3></div><div class="bd">' + (T ? tableOf(c.byMarket, [['Market', r => esc(r.name)], ['Closed', r => r.deals], ['Revenue', r => money(r.revenue)]]) : barList(c.byMarket, r => r.revenue, money)) + '</div></div>' +
+      '<div class="card"><div class="hd"><h3>Revenue per disposition rep</h3></div><div class="bd">' + (T ? tableOf(c.byRep, [['Rep', r => esc(r.name)], ['Closed', r => r.deals], ['Revenue', r => money(r.revenue)]]) : barList(c.byRep, r => r.revenue, money)) + '</div></div></div>' +
+      '<div class="grid g2" style="align-items:start">' +
+      '<div class="card"><div class="hd"><h3>Top-performing investors</h3></div>' + (c.topInvestors.length ? tableOf(c.topInvestors, [['Investor', r => '<a data-act="editInvestor" data-id="' + esc(r.id) + '" style="cursor:pointer">' + esc(r.name) + '</a><div class="small tier">' + esc(r.tier) + '</div>'], ['Heat', r => heatChip(r.heat)], ['Closed', r => r.closed], ['Offers', r => r.offers], ['Response', r => r.responseRate + '%'], ['Close rate', r => r.closeRate + '%']]) : '<div class="empty" style="padding:24px">No buyer activity yet.</div>') + '</div>' +
+      '<div class="card"><div class="hd"><h3>Deals sitting too long</h3><span class="tag" style="margin-left:auto;color:var(--amber)">' + c.stale.length + '</span></div>' + (c.stale.length ? tableOf(c.stale, [['Deal', r => '<a data-go="deal" data-id="' + esc(r.id) + '" style="cursor:pointer">' + esc(r.title) + '</a>'], ['Stage', r => '<span class="tag">' + esc(r.stage) + '</span>'], ['No activity', r => '<b style="color:var(--amber)">' + r.days + ' days</b>'], ['Rep', r => esc(repName(r.rep) || '—')]]) : '<div class="empty" style="padding:24px">Every deal has recent activity ✓</div>') + '</div></div>';
+  },
+  mount() { loadView('ceoData', 'getCeoDashboard', [S.ceoRange || 90]); }
+};
+
+// ---------- Distribution analytics ----------
+VIEWS.analytics = {
+  html() {
+    const a = S.analyticsData;
+    if (!a) return '<div class="loading"><span class="spinner"></span> Loading…</div>';
+    const t = a.totals;
+    return '<div class="grid g4" style="margin-bottom:12px">' + kpi('Buyers reached', t.received, 'individual live emails') + kpi('Response rate', t.responseRate + '%', t.responded + ' buyers replied') + kpi('Interested buyers', t.interested, t.offers + ' offers') + kpi('Passes', t.passes, 'with reasons below') + '</div>' +
+      '<p class="small muted" style="margin:0 0 16px">' + esc(a.note) + '</p>' +
+      '<div class="grid" style="grid-template-columns:1fr 2.2fr;align-items:start">' +
+      '<div class="card"><div class="hd"><h3>Why buyers passed</h3></div><div class="bd">' + barList(a.passReasons.map(r => ({ name: r.reason, v: r.count })), r => r.v, v => String(v)) + '<div class="small muted" style="margin-top:10px">From "Not for me" replies and logged calls.</div></div></div>' +
+      '<div class="card"><div class="hd"><h3>Every deal blast</h3></div>' + (a.deals.length ? '<div style="overflow:auto">' + tableOf(a.deals, [
+        ['Deal', r => '<div style="min-width:170px"><a data-go="deal" data-id="' + esc(r.id) + '" style="cursor:pointer">' + esc(r.title) + '</a><div class="small muted">' + esc(r.stage) + '</div></div>'], ['Received', r => r.received + (Object.keys(r.waves).length > 1 ? '<div class="small muted">' + Object.keys(r.waves).map(w => 'W' + w + ':' + r.waves[w]).join(' ') + '</div>' : '')],
+        ['Responded', r => r.responded + ' <span class="small muted">(' + r.responseRate + '%)</span>'], ['Interested', r => r.interested], ['Offers', r => r.offers + (r.bestOffer ? '<div class="small muted">best ' + short$(r.bestOffer) + '</div>' : '')],
+        ['Competing', r => r.competition >= 2 ? '<b style="color:var(--accent-2)">' + r.competition + ' buyers</b>' : r.competition], ['Passes', r => r.passTotal ? '<span class="small">' + Object.keys(r.passes).map(k => esc(k) + '&nbsp;' + r.passes[k]).join(' · ') + '</span>' : '—'],
+        ['1st reply', r => r.hoursToFirstResponse === null ? '—' : r.hoursToFirstResponse + 'h']]) + '</div>' : '<div class="empty" style="padding:24px">No live distributions yet.</div>') + '</div></div>';
+  },
+  mount() { loadView('analyticsData', 'getDistributionAnalytics'); }
+};
+
+// ---------- Buyer tiers ----------
+VIEWS.tiers = {
+  html() {
+    const t = S.tiersData;
+    if (!t) return '<div class="loading"><span class="spinner"></span> Scoring buyers…</div>';
+    S.reactSel = S.reactSel || new Set();
+    return '<div class="card" style="margin-bottom:18px"><div class="bd row" style="gap:14px"><div style="flex:1;min-width:260px"><div style="font-family:var(--serif);font-size:22px">Automatic tier upgrades</div><div class="small muted">' +
+      (t.auto ? 'On. ' : 'Off (turn on in Settings). ') + 'Every night at 2 AM: heat scores update, buyers are promoted from verified purchases, reliability and activity, and demoted after repeated failed closings.' + (t.lastNightly ? ' Last run ' + ago(t.lastNightly) + '.' : '') + '</div></div>' +
+      (t.nightly ? '<button class="btn" data-act="nightly" data-val="off">Nightly: ON · turn off</button>' : '<button class="btn primary" data-act="nightly" data-val="on">Turn on nightly automation</button>') +
+      '<button class="btn" data-act="tiersApply"' + (t.plan.length ? '' : ' disabled') + '>Apply ' + t.plan.length + ' tier change' + (t.plan.length === 1 ? '' : 's') + ' now</button></div></div>' +
+      '<div class="grid g4" style="margin-bottom:18px">' + t.tiers.map(x => kpi(esc(x.tier), x.count, 'avg heat ' + x.avgHeat)).join('') + '</div>' +
+      '<div class="grid g2" style="align-items:start;margin-bottom:18px">' +
+      '<div class="card"><div class="hd"><h3>Recommended tier changes</h3></div>' + (t.plan.length ? tableOf(t.plan, [['Buyer', r => '<a data-act="editInvestor" data-id="' + esc(r.id) + '" style="cursor:pointer">' + esc(r.name) + '</a>'], ['Change', r => esc(r.from) + ' → <b style="color:' + (r.up ? 'var(--accent-2)' : '#FF8A84') + '">' + esc(r.to) + '</b>'], ['Why', r => '<span class="small">' + esc(r.reason) + '</span>']]) : '<div class="empty" style="padding:24px">Every buyer is in the right tier ✓</div>') + '</div>' +
+      '<div class="card"><div class="hd"><h3>Dead-deal recovery</h3></div>' + (t.recovery.length ? tableOf(t.recovery, [['Deal', r => '<a data-go="deal" data-id="' + esc(r.dealId) + '" style="cursor:pointer">' + esc(r.title) + '</a>'], ['Stalled', r => r.days + ' days'], ['Offers', r => r.offers ? r.offers + ' (best ' + short$(r.bestOffer) + ')' : 'none'], ['', r => '<button class="btn sm primary" data-act="recover" data-id="' + esc(r.dealId) + '">Re-send to next ring</button>']])
+        : '<div class="empty" style="padding:24px">No stalled deals. Deals without an acceptable offer ' + esc(S.settings.values.RECOVERY_DAYS) + '+ days after distribution show up here.</div>') + '</div></div>' +
+      '<div class="card" style="margin-bottom:18px"><div class="hd"><h3>Investor reactivation</h3><span class="small muted" style="margin-left:auto">Received 2+ deals, no response in ' + esc(S.settings.values.REACTIVATE_DAYS) + ' days</span></div>' + (t.reactivation.length ?
+        '<div class="bd row" style="padding-bottom:0"><button class="btn sm" data-act="reactAll">Select all</button><button class="btn sm primary" data-act="reactLaunch"' + (S.reactSel.size ? '' : ' disabled') + '>Send "Still buying?" email to ' + S.reactSel.size + '</button></div>' +
+        tableOf(t.reactivation, [['', r => '<input type="checkbox" data-change="reactSel" value="' + esc(r.id) + '"' + (S.reactSel.has(r.id) ? ' checked' : '') + '>'], ['Buyer', r => esc(r.name) + '<div class="small muted">' + esc(r.email) + '</div>'], ['Tier', r => '<span class="tier">' + esc(r.tier) + '</span>'], ['Deals received', r => r.dealsReceived], ['Last activity', r => r.lastActivity ? ago(r.lastActivity) : 'never'], ['Markets', r => '<span class="small">' + esc(r.markets) + '</span>']])
+        : '<div class="empty" style="padding:24px">No inactive buyers right now.</div>') + '</div>' +
+      t.tiers.map(x => '<div class="card" style="margin-bottom:14px"><div class="hd"><h3>' + esc(x.tier) + '</h3><span class="tag" style="margin-left:auto">' + x.count + '</span></div>' + (x.buyers.length ? tableOf(x.buyers.slice(0, 30), [['Buyer', r => '<a data-act="editInvestor" data-id="' + esc(r.id) + '" style="cursor:pointer">' + esc(r.name) + '</a>'], ['Heat', r => heatChip(r.heat)], ['Closed', r => r.closed], ['Response', r => r.responseRate + '%'], ['POF', r => pofChip(r.pof)]]) : '<div class="empty" style="padding:18px">—</div>') + '</div>').join('');
+  },
+  mount() { loadView('tiersData', 'getTierCenter'); }
+};
+
+// ---------- Market management ----------
+VIEWS.markets = {
+  html() {
+    const m = S.marketsData;
+    if (!m) return '<div class="loading"><span class="spinner"></span> Loading markets…</div>';
+    return '<div class="card" style="margin-bottom:18px"><div class="bd"><form id="mkForm" class="row" style="align-items:flex-end">' + '<div style="flex:1">' + field('Your markets (comma separated)', inp('MARKETS', S.settings.values.MARKETS), 'Used for buyer profiles, matching, the signup form and these reports.') + '</div><button class="btn primary" data-act="saveMarkets" style="margin-bottom:22px">Save markets</button></form></div></div>' +
+      (m.markets.length ? '<div class="table-wrap"><table class="t"><thead><tr><th>Market</th><th>Active buyers</th><th>Land buyers</th><th>POF verified</th><th>Deals available</th><th>Under contract</th><th>Closed</th><th>Revenue</th><th>Avg fee</th><th>Top buyers</th></tr></thead><tbody>' +
+        m.markets.map(r => '<tr><td style="font-family:var(--serif);font-size:17px;font-weight:600">' + esc(r.market) + '</td><td>' + r.buyers + '</td><td>' + r.landBuyers + '</td><td>' + r.verified + '</td><td>' + r.activeDeals + '</td><td>' + r.underContract + '</td><td>' + r.closed + '</td><td><b>' + money(r.revenue) + '</b></td><td>' + (r.avgFee === null ? '—' : money(r.avgFee)) + '</td>' +
+          '<td class="small">' + (r.topBuyers.map(b => '<a data-act="editInvestor" data-id="' + esc(b.id) + '" style="cursor:pointer">' + esc(b.name) + '</a> ' + heatChip(b.heat)).join('<br>') || '—') + '</td></tr>').join('') + '</tbody></table></div>' : '<div class="card empty"><h4>No markets yet</h4>Add your markets above.</div>');
+  },
+  mount() { loadView('marketsData', 'getMarketReport'); }
+};
+
+// ---------- Land buyers & builders ----------
+VIEWS.land = {
+  html() {
+    const l = S.landData;
+    if (!l) return '<div class="loading"><span class="spinner"></span> Loading land buyers…</div>';
+    return '<p class="muted" style="margin-top:0">Builders, developers and land acquisition buyers, ranked by how much land they actually buy. A builder buying 20 lots a year is worth far more than an occasional parcel buyer. Land deals are smart-matched only to these buyers.</p>' +
+      '<div class="grid" style="grid-template-columns:2fr 1fr;align-items:start">' +
+      '<div class="card"><div class="hd"><h3>Land buyer database</h3><span class="tag" style="margin-left:auto">' + l.buyers.length + '</span></div>' + (l.buyers.length ? '<div style="overflow:auto">' + tableOf(l.buyers, [
+        ['Buyer', r => '<a data-act="editInvestor" data-id="' + esc(r.id) + '" style="cursor:pointer;font-weight:600">' + esc(r.company || r.name) + '</a><div class="small muted">' + esc(r.company && r.name !== r.company ? r.name + ' · ' : '') + esc(r.categories) + (r.status === 'Pending Review' ? ' · <span style="color:var(--amber)">pending review</span>' : '') + '</div>'],
+        ['Land buys', r => '<b>' + r.landBuys + '</b>' + (r.boughtFromUs ? '<div class="small" style="color:var(--accent-2)">' + r.boughtFromUs + ' from us</div>' : '')], ['Where', r => '<span class="small">' + (Object.keys(r.cities).map(c => esc(c) + ' ' + r.cities[c]).join(', ') || esc(r.markets) || '—') + '</span>'],
+        ['Buy box', r => '<span class="small">' + esc(r.acres || '—') + '</span>'], ['Tier', r => '<span class="tier">' + esc(r.tier || '—') + '</span>'], ['Heat', r => heatChip(r.heat)]]) + '</div>' : '<div class="empty" style="padding:24px">No land buyers yet. Turn on DealMachine land buyers in New Buyers, or tag buyers as Developer / Builder.</div>') + '</div>' +
+      '<div class="card"><div class="hd"><h3>Builder activity by market</h3></div><div class="bd">' + (l.builderActivity.length ? l.builderActivity.map(m => '<div style="margin-bottom:16px"><div class="row" style="justify-content:space-between"><b>' + esc(m.market) + '</b><span class="small muted">' + m.lots + ' lots</span></div>' +
+        barList(m.builders.slice(0, 5).map(b => ({ name: b.name, v: b.lots })), r => r.v, v => v + ' lot' + (v === 1 ? '' : 's')) + '</div>').join('') : '<div class="empty" style="padding:18px">Land purchases appear here as buyers are found.</div>') + '</div></div></div>';
+  },
+  mount() { loadView('landData', 'getLandBuyers'); }
+};
+
 // ---------- import ----------
 const IMPORT_LABELS = { fullName: 'Full name (split into first/last)', firstName: 'First name', lastName: 'Last name', company: 'Company', email: 'Email *', phone: 'Phone', tier: 'Tier', categories: 'Categories', markets: 'Preferred markets', propertyTypes: 'Property types', minPrice: 'Min price', maxPrice: 'Max price', criteria: 'Buying criteria', status: 'Status (active/inactive)', notes: 'Notes' };
 VIEWS.import = {
@@ -1475,7 +1628,7 @@ function logResponseModal(dealId) {
     field('Deal *', sel('dealId', dealId || '', deals.map(d => [d.id, d.id + ' · ' + d.address]), 'Select deal…')) +
     field('Investor', sel('investorId', '', S.investors.slice().sort((a, b) => lc(a.firstName + a.lastName).localeCompare(lc(b.firstName + b.lastName))).map(i => [i.id, ((i.firstName + ' ' + i.lastName).trim() || i.company) + ' · ' + i.email]), 'Not in database / enter below')) +
     field('Name (if not in database)', inp('investorName', '')) + field('Email (if not in database)', inp('investorEmail', '', 'email')) +
-    field('Response type', sel('type', 'Interested', L().responseTypes)) + field('Offer amount', moneyInp('offerAmount', '')) +
+    field('Response type', sel('type', 'Interested', L().responseTypes)) + field('Pass reason (if not interested)', sel('passReason', '', ['Price', 'Location', 'Condition', 'Numbers', 'Timing', 'Other'], '—')) + field('Offer amount', moneyInp('offerAmount', '')) +
     field('Follow-up status', sel('followUp', 'New', L().followUpStatuses)) + '<div></div>' +
     '</div><div class="stack" style="margin-top:14px">' + field('Message / details', area('message', '', 'rows="3" placeholder="Called — wants to walk it Thursday, has POF."')) + field('Internal notes', area('notes', '', 'rows="2"')) + '</div></form>';
   openModal('Log Investor Response', body, '<button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn primary" data-act="saveResponse">Save Response</button>');
@@ -1506,7 +1659,11 @@ VIEWS.settings = {
       '</div><div class="stack">' +
       '<div class="card"><div class="hd"><h3>Email</h3></div><div class="bd stack"><div class="grid g2">' + f('SENDER_NAME', 'From name') + f('REPLY_TO', 'Reply-To address', 'email') + '</div>' + f('FROM_ALIAS', 'Send-as alias (optional)', 'email') + f('SUBJECT_TEMPLATE', 'Subject line') +
       '<div class="grid g3">' + f('EMAIL_PHOTO_COUNT', 'Photos in email', 'number') + f('SHARE_MEDIA_LINKS', 'Share gallery link', 'bool') + f('SHOW_ASSIGNMENT_DEFAULT', 'Show assignment price', 'bool') + '</div>' + f('DISCLAIMER', 'Disclaimer', 'area') + '</div></div>' +
-      '<div class="card"><div class="hd"><h3>Matching, Follow-Ups & Team</h3></div><div class="bd stack">' + f('REPS', 'Disposition reps', 'area') +
+      '<div class="card"><div class="hd"><h3>Team & Permissions</h3></div><div class="bd stack"><div class="small muted">Owner: everything. Rep: deals, buyers, distributions, offers, follow-ups. Viewer: read-only. For teammates to sign in, deploy the web app with <b>Who has access: Anyone within your Google Workspace domain</b> (Google only reveals a visitor\'s email inside the same Workspace).</div>' + f('TEAM_MEMBERS', 'Team members ("email: Role", one per line)', 'area') + '</div></div>' +
+      '<div class="card"><div class="hd"><h3>Tiers, Recovery & Reactivation</h3></div><div class="bd stack"><div class="grid g3">' + f('AUTO_TIER_ON', 'Automatic tier changes', 'bool') + f('TIER_TOP_MIN_CLOSED', 'Top tier: min. closed', 'number') + f('TIER_TOP_MIN_HEAT', 'Top tier: min. heat', 'number') +
+      f('TIER_SECOND_MIN_CLOSED', '2nd tier: min. closed', 'number') + f('TIER_SECOND_MIN_HEAT', '2nd tier: min. heat + POF', 'number') + f('TIER_DOWN_DEFAULTS', 'Demote after failed closings', 'number') +
+      f('RECOVERY_DAYS', 'Recovery after (days)', 'number') + f('MIN_ACCEPTABLE_FEE', 'Acceptable fee ≥', 'number') + f('RECOVERY_AUTO', 'Automatic recovery re-send', 'bool') + f('REACTIVATE_DAYS', 'Reactivate after (days quiet)', 'number') + '</div></div></div>' +
+      '<div class="card"><div class="hd"><h3>Matching, Follow-Ups & Reps</h3></div><div class="bd stack">' + f('REPS', 'Disposition reps', 'area') +
       '<div class="grid g3">' + f('MATCH_MIN_SCORE', 'Min. match score', 'number') + f('WAVE2_DELAY_HOURS', 'Wave 2 delay (h)', 'number') + f('WAVE3_DELAY_HOURS', 'Wave 3 delay (h)', 'number') +
       f('FU_NORESP_HOURS', 'No-response follow-up (h)', 'number') + f('FU_OFFER_HOURS', 'Offer reminder (h)', 'number') + f('FU_POF_HOURS', 'POF reminder (h)', 'number') +
       f('FU_QUIET_DAYS', 'Buyer quiet alert (days)', 'number') + f('FU_CLOSING_DAYS', 'Closing reminder (days)', 'number') + f('FU_STUCK_DAYS', 'Stuck deal alert (days)', 'number') + f('POF_VALID_DAYS', 'POF valid for (days)', 'number') + '</div></div></div>' +
@@ -1531,6 +1688,27 @@ VIEWS.settings = {
 // ============================================================
 const ACT = {
   closeModal,
+  ceoTable: () => { S.ceoTable = !S.ceoTable; render(); },
+  priceDrop: el => openDistribute(el.dataset.id, 'priceDrop'),
+  recover: el => openDistribute(el.dataset.id, 'recovery'),
+  nightly: async el => { try { S.tiersData = await api(el.dataset.val === 'on' ? 'enableNightly' : 'disableNightly'); toast('Nightly automation ' + (el.dataset.val === 'on' ? 'on' : 'off') + '.'); render(); } catch (e) { fail(e); } },
+  tiersApply: async el => {
+    if (!confirmSafe('Apply ' + S.tiersData.plan.length + ' tier changes?')) return;
+    el.disabled = true;
+    try { S.tiersData = await api('runTierUpgradesNow'); S.investors = await api('listInvestors'); toast(S.tiersData.applied + ' tier change(s) applied.'); render(); } catch (e) { fail(e); el.disabled = false; }
+  },
+  reactAll: () => { S.tiersData.reactivation.forEach(r => S.reactSel.add(r.id)); render(); },
+  reactLaunch: () => {
+    const n = S.reactSel.size, test = S.settings.testMode;
+    openModal('Send reactivation email', '<div class="confirm-box ' + (test ? 'test' : 'live') + '"><h4>' + (test ? 'Test mode — delivered to your test address' : n + ' real buyers') + '</h4><p>Each buyer gets an individual "Still buying? Update your buy box" email' + (S.settings.values.BUYER_FORM_URL ? ' linking to your VIP signup form' : '') + '. Buyers are contacted at most once every ' + esc(S.settings.values.REACTIVATE_DAYS) + ' days.</p>' +
+      (test ? '' : '<div class="field"><label>Type <b style="color:#fff;letter-spacing:2px">SEND</b> to confirm</label><input type="text" class="confirm-input" id="reactText" autocomplete="off"></div>') + '</div>',
+      '<button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn-send" data-act="reactGo">' + icon('send') + 'Send</button>');
+  },
+  reactGo: async el => {
+    el.disabled = true;
+    try { const r = await api('launchReactivation', Array.from(S.reactSel), ($('#reactText') || {}).value || ''); closeModal(); S.reactSel.clear(); S.tiersData = r; toast('Reactivation sent to ' + r.sent + ' buyer' + (r.sent === 1 ? '' : 's') + '.'); render(); } catch (e) { fail(e); el.disabled = false; }
+  },
+  saveMarkets: async el => { try { S.settings = await api('saveSettings', formData($('#mkForm'))); S.marketsData = null; toast('Markets saved.'); render(); } catch (e) { fail(e); } },
   setStage: async el => {
     const id = el.dataset.id, st = el.dataset.val, d = S.deals.find(x => x.id === id) || {};
     if (st === d.stage) return;
@@ -1776,6 +1954,8 @@ async function doStatus(id, status, extra) {
 }
 
 const CHANGE = {
+  ceoRange: el => { S.ceoRange = +el.value; S.ceoData = null; render(); },
+  reactSel: el => { el.checked ? S.reactSel.add(el.value) : S.reactSel.delete(el.value); render(); },
   stageSelect: async el => { try { replaceDeal(await api('setDealStage', el.dataset.id, el.value, {})); S.pipe = null; toast('Moved to <b>' + esc(el.value) + '</b>.'); render(); } catch (e) { fail(e); } },
   pipeDone: el => { S.pipeShowDone = el.checked; render(); },
   matchDeal: el => { S.matchDeal = el.value; S.matchData = null; render(); },
@@ -1829,7 +2009,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('.overla
 
 // ---------- boot ----------
 api('getBootstrap').then(b => {
-  S.settings = b.settings; S.investors = b.investors; S.deals = b.deals; S.dashboard = b.dashboard;
+  S.settings = b.settings; S.investors = b.investors; S.deals = b.deals; S.dashboard = b.dashboard; S.me = b.me;
   $('#boot').remove();
   render();
   api('getFollowUpCenter').then(f => { S.fuDue = f.due.length; renderChrome(); }).catch(() => {});

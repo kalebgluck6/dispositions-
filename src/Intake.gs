@@ -567,6 +567,7 @@ function sendIntakeSummary_(adds) {
 // ---------- client API ----------
 
 function getIntakeStatus() {
+  requireRole_('Viewer');
   var s = getSettings_();
   var form = buyerForm_();
   var formInfo = null;
@@ -594,6 +595,7 @@ function getIntakeStatus() {
 
 /** Creates (or re-links) the branded VIP buyer signup Google Form. */
 function createBuyerSignupForm() {
+  requireRole_('Rep');
   return withLock_(function () {
     var existing = buyerForm_();
     if (existing) { ensureFormTrigger_(existing); return getIntakeStatus(); }
@@ -637,6 +639,7 @@ function createBuyerSignupForm() {
 
 /** Turns on the automatic intake: every morning and every night at the chosen hours. */
 function enableDailyIntake(hourAm, hourPm) {
+  requireRole_('Owner');
   return withLock_(function () {
     var s = getSettings_();
     var valid = function (h) { h = parseInt(h, 10); return isNaN(h) || h < 0 || h > 23 ? null : h; };
@@ -654,12 +657,14 @@ function enableDailyIntake(hourAm, hourPm) {
 }
 
 function disableDailyIntake() {
+  requireRole_('Owner');
   deleteTriggers_('runBuyerIntake');
   return getIntakeStatus();
 }
 
 /** Runs all enabled sources now. */
 function runBuyerIntakeNow() {
+  requireRole_('Rep');
   var r = runBuyerIntake();
   var st = getIntakeStatus();
   st.run = r;
@@ -668,6 +673,7 @@ function runBuyerIntakeNow() {
 
 /** Shows what the system will read from a linked sheet, without adding anyone. */
 function previewBuyerSource(kind, urlOrId, tabName) {
+  requireRole_('Rep');
   var src = openImportSource_(urlOrId, tabName);
   var values = src.sheet.getDataRange().getDisplayValues();
   if (kind === 'cash') {

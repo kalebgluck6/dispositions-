@@ -103,6 +103,7 @@ function createOfferFromResponse_(resp) {
 // ---------- client API ----------
 
 function listOffers(dealId) {
+  requireRole_('Viewer');
   var invById = {};
   readTable_(SHEET.INVESTORS).rows.forEach(function (i) { invById[i.id] = i; });
   var deals = {};
@@ -117,12 +118,14 @@ function listOffers(dealId) {
 
 /** Side-by-side comparison for one deal. */
 function compareOffers(dealId) {
+  requireRole_('Viewer');
   var deal = getDeal(dealId);
   return { deal: deal, offers: listOffers(dealId) };
 }
 
 /** Create or update an offer. */
 function saveOffer(o) {
+  requireRole_('Rep');
   return withLock_(function () {
     o = o || {};
     var deal = getDealRow_(o.dealId);
@@ -162,6 +165,7 @@ function saveOffer(o) {
  *   Fell Through → records a failed closing for the buyer; deal goes back to Negotiating.
  */
 function setOfferStatus(offerId, status, extra) {
+  requireRole_('Rep');
   if (OFFER_STATUSES.indexOf(status) === -1) throw new Error('Unknown offer status.');
   extra = extra || {};
   return withLock_(function () {
@@ -176,6 +180,7 @@ function setOfferStatus(offerId, status, extra) {
         if (x.dealId === o.dealId && x.id !== o.id && ['Received', 'Countered', 'Accepted'].indexOf(x.status) > -1) updateObject_(SHEET.OFFERS, x._row, { status: 'Backup', updated: new Date() });
       });
       var df = { stage: 'Buyer Selected', stageUpdated: new Date(), status: 'Pending', buyerInvestorId: o.investorId || '', buyer: o.investorName, updated: new Date() };
+      if (!deal.buyerSelectedOn) df.buyerSelectedOn = new Date();
       if (o.emd !== '') df.emdAmount = o.emd;
       if (str_(o.closingDate)) df.closingDate = str_(o.closingDate);
       updateObject_(SHEET.DEALS, deal._row, df);

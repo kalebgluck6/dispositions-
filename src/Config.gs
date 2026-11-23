@@ -65,7 +65,9 @@ var INVESTOR_MAP = {
   pofVerifiedOn: 'POF Verified On',
   dealsClosed: 'Deals Closed With Us',
   defaults: 'Contract Defaults',
-  reliability: 'Reliability Rating'
+  reliability: 'Reliability Rating',
+  heat: 'Heat Score',
+  tierChanged: 'Tier Changed On'
 };
 
 var DEAL_MAP = {
@@ -118,7 +120,21 @@ var DEAL_MAP = {
   buyerInvestorId: 'Buyer Investor ID',
   emdAmount: 'EMD Amount',
   emdReceived: 'EMD Received On',
-  assignmentSigned: 'Assignment Signed On'
+  assignmentSigned: 'Assignment Signed On',
+  buyerSelectedOn: 'Buyer Selected On',
+  firstDistributed: 'First Distributed',
+  previousPrice: 'Previous Price',
+  priceReducedOn: 'Price Reduced On',
+  // ---- land intelligence ----
+  roadFrontage: 'Road Frontage (ft)',
+  utilities: 'Utilities',
+  floodZone: 'Flood Zone',
+  wetlands: 'Wetlands',
+  soilSeptic: 'Soil / Septic',
+  roadAccess: 'Road Access',
+  potentialLots: 'Potential Lots',
+  density: 'Density',
+  zoningNotes: 'Zoning Restrictions'
 };
 
 var JOB_MAP = {
@@ -135,7 +151,8 @@ var JOB_MAP = {
   simulated: 'Simulated',
   status: 'Status',
   completed: 'Completed',
-  notes: 'Notes'
+  notes: 'Notes',
+  kind: 'Kind'
 };
 
 // NOTE: Status → Error must stay contiguous (the queue writes them as one block).
@@ -172,7 +189,8 @@ var RESPONSE_MAP = {
   source: 'Source',
   followUp: 'Follow-Up Status',
   notes: 'Notes',
-  messageId: 'Message ID'
+  messageId: 'Message ID',
+  passReason: 'Pass Reason'
 };
 
 var SCHEMAS = {};
@@ -243,6 +261,7 @@ TEXT_COLUMNS[SHEET.INVESTORS] = ['Investor ID', 'Phone', 'POF Expires', 'Preferr
 TEXT_COLUMNS[SHEET.DEALS] = ['Deal ID', 'Zip', 'Closing Date', 'Photo IDs', 'Lot Size', 'Offer Deadline', 'Parcel ID', 'Pipeline Stage'];
 TEXT_COLUMNS[SHEET.LOG] = ['Log ID', 'Job ID', 'Deal ID', 'Investor ID'];
 TEXT_COLUMNS[SHEET.RESPONSES] = ['Response ID', 'Deal ID', 'Investor ID', 'Message ID'];
+TEXT_COLUMNS[SHEET.JOBS] = ['Job ID', 'Deal ID'];
 TEXT_COLUMNS[SHEET.INTAKE] = ['Intake ID', 'Investor ID', 'Reference', 'Phone'];
 TEXT_COLUMNS[SHEET.OFFERS] = ['Offer ID', 'Deal ID', 'Investor ID', 'Proposed Closing Date', 'Response ID'];
 TEXT_COLUMNS[SHEET.FOLLOWUPS] = ['Follow-Up ID', 'Rule Key', 'Deal ID', 'Investor ID'];
@@ -265,6 +284,8 @@ var PIPELINE = [
 ];
 var PIPELINE_STAGES = PIPELINE.map(function (p) { return p.stage; });
 var OFFER_STATUSES = ['Received', 'Countered', 'Accepted', 'Backup', 'Under Contract', 'Closed', 'Rejected', 'Withdrawn', 'Fell Through'];
+var PASS_REASONS = ['Price', 'Location', 'Condition', 'Numbers', 'Timing', 'Other'];
+var ROLES = ['Owner', 'Rep', 'Viewer'];
 var CONDITION_PREFS = ['Rehab', 'Turnkey', 'Either'];
 var FUNDING_TYPES = ['Cash', 'Hard money', 'Private lender', 'Conventional', 'Other'];
 var PENDING_REVIEW = 'Pending Review';
@@ -350,6 +371,20 @@ var DEFAULT_SETTINGS = [
   ['FU_STUCK_DAYS', '7', 'Flag deals with no stage change in this many days.'],
   ['REPS', '', 'Disposition reps (comma separated "Name <email>").'],
   ['POF_VALID_DAYS', '90', 'Proof of funds is treated as expired after this many days.'],
+  // ---- buyer tiers (automatic upgrades) ----
+  ['AUTO_TIER_ON', 'TRUE', 'Automatically promote / demote buyer tiers every night from verified purchases, reliability and activity.'],
+  ['TIER_TOP_MIN_CLOSED', '2', 'Top tier: at least this many deals closed with you…'],
+  ['TIER_TOP_MIN_HEAT', '60', '…and at least this heat score.'],
+  ['TIER_SECOND_MIN_CLOSED', '1', 'Second tier: at least this many deals closed with you, or…'],
+  ['TIER_SECOND_MIN_HEAT', '45', '…this heat score with verified proof of funds.'],
+  ['TIER_DOWN_DEFAULTS', '2', 'Move a buyer down one tier after this many failed closings.'],
+  // ---- recovery & reactivation ----
+  ['RECOVERY_DAYS', '5', 'Dead-deal recovery: a deal with no acceptable offer this many days after distribution is flagged for recovery.'],
+  ['MIN_ACCEPTABLE_FEE', '5000', 'An offer is "acceptable" when your assignment fee is at least this (or the offer is ≥ 95% of asking).'],
+  ['RECOVERY_AUTO', 'FALSE', 'TRUE = automatically re-send stalled deals to the next ring of matched buyers (still respects test mode).'],
+  ['REACTIVATE_DAYS', '90', 'Investor reactivation: buyers who received deals but haven\'t responded in this many days.'],
+  // ---- team ----
+  ['TEAM_MEMBERS', '', 'Team access (one per line, "email: Role"). Roles: Owner, Rep, Viewer. Leave blank for single-user mode.'],
   ['BUYER_FORM_ID', '', 'Managed automatically — your VIP buyer signup form.'],
   ['BUYER_FORM_URL', '', 'Managed automatically — public link to your VIP buyer signup form.']
 ];

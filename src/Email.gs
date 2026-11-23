@@ -83,6 +83,10 @@ function buildDealEmail_(deal, settings, opts) {
   var reply = replyTo_();
   var contactEmail = contactEmail_();
   var subject = dealSubject_(deal, settings);
+  var reduced = Number(deal.previousPrice) > Number(deal.askingPrice);
+  if (opts.kind === 'price_drop') subject = 'PRICE REDUCED ' + money_(deal.previousPrice) + ' → ' + money_(deal.askingPrice) + ' | ' + subject;
+  var deadline = asDate_(deal.offerDeadline);
+  if (deadline && deadline.getTime() < Date.now()) deadline = null;
   var title = dealTitle_(deal);
   var cityLine = [str_(deal.city), [str_(deal.state), str_(deal.zip)].filter(String).join(' ')].filter(String).join(', ');
   var photoCount = opts.photoCount || 0;
@@ -94,7 +98,7 @@ function buildDealEmail_(deal, settings, opts) {
   var offerLink = mailto_(reply, 'OFFER - ' + deal.id + ' - ' + str_(deal.address),
     'My offer for ' + title + ' is: $\n\nProof of funds attached: Yes / No\nClosing timeline: \n\n' + ref);
   var passLink = mailto_(reply, 'PASS - ' + deal.id + ' - ' + str_(deal.address),
-    'Not for me this time.\n\n' + ref);
+    'Not for me this time. Main reason (keep one): Price / Location / Condition / Numbers / Timing / Other\n\nAnything that would change your mind?\n\n' + ref);
   var unsubLink = mailto_(reply, 'UNSUBSCRIBE', 'Please remove me from the ' + company + ' investor list.\n\nInvestor ref: {{INVESTOR_REF}}');
 
   var galleryUrl = '';
@@ -126,6 +130,14 @@ function buildDealEmail_(deal, settings, opts) {
   if (photoCount > 0) {
     h.push('<tr><td style="padding:0;background:', B.black, ';"><img src="', src(0), '" width="640" alt="', esc_(title),
       '" style="display:block;width:100%;max-width:640px;height:auto;border:0;"></td></tr>');
+  }
+
+  // Price-reduction / deadline banners
+  if (reduced && (opts.kind === 'price_drop' || (deal.priceReducedOn && Date.now() - asDate_(deal.priceReducedOn).getTime() < 14 * 86400000))) {
+    h.push('<tr><td style="background:#F6C343;padding:12px 32px;font-family:', B.sans, ';font-size:14px;color:#1B1F1D;"><b>PRICE REDUCED</b> from <s>', esc_(money_(deal.previousPrice)), '</s> to <b>', esc_(money_(deal.askingPrice)), '</b></td></tr>');
+  }
+  if (deadline) {
+    h.push('<tr><td style="background:', B.ink, ';padding:10px 32px;font-family:', B.sans, ';font-size:13px;color:', B.accentSoft, ';letter-spacing:.5px;">⏱ Offers due by <b style="color:#fff;">', esc_(fmtDate_(deadline, "EEEE, MMM d 'at' h:mm a")), '</b></td></tr>');
   }
 
   // Title block
@@ -170,6 +182,13 @@ function buildDealEmail_(deal, settings, opts) {
   if (deal.repairs !== '') details.push(['Estimated Repairs', money_(deal.repairs)]);
   if (m.allIn) details.push(['All-In (Price + Repairs)', money_(m.allIn) + (m.allInPctArv ? ' &nbsp;(' + m.allInPctArv + '% of ARV)' : '')]);
   if (m.pricePerSqft) details.push(['Price / Sq Ft', '$' + m.pricePerSqft]);
+  if (isLandDeal_(deal)) {
+    if (dealAcres_(deal)) details.push(['Acreage', (Math.round(dealAcres_(deal) * 100) / 100) + ' acres']);
+    [['Parcel ID', deal.parcelId], ['Zoning', deal.zoning], ['Zoning Restrictions', deal.zoningNotes], ['Potential Lots', deal.potentialLots], ['Density', deal.density],
+      ['Road Frontage', deal.roadFrontage ? numFmt_(deal.roadFrontage) + ' ft' : ''], ['Road Access', deal.roadAccess], ['Utilities', deal.utilities],
+      ['Flood Zone', deal.floodZone], ['Wetlands', deal.wetlands], ['Soil / Septic', deal.soilSeptic]]
+      .forEach(function (x) { if (str_(x[1])) details.push([x[0], str_(x[1])]); });
+  }
   var closing = deal.closingDate instanceof Date ? fmtDate_(deal.closingDate, 'MMMM d, yyyy') : prettyDate_(deal.closingDate);
   if (closing) details.push(['Closing Date', closing]);
 
@@ -327,6 +346,7 @@ function loadInlineImages_(deal, n) {
 
 /** HTML preview of the email exactly as an investor will see it. */
 function getEmailPreview(dealId) {
+  requireRole_('Viewer');
   var deal = getDealRow_(dealId);
   var settings = getSettings_();
   var imgs = loadInlineImages_(deal, Number(settings.EMAIL_PHOTO_COUNT) || 4);

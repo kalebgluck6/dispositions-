@@ -82,6 +82,7 @@ function autoMap_(headers) {
 
 /** Reads the source sheet and proposes a column mapping. */
 function previewImport(urlOrId, tabName) {
+  requireRole_('Rep');
   var src = openImportSource_(urlOrId, tabName);
   var values = src.sheet.getDataRange().getDisplayValues();
   if (!values.length) throw new Error('That tab is empty.');
@@ -106,6 +107,7 @@ function previewImport(urlOrId, tabName) {
  * mapping: { field: columnIndex }  options: { defaultTier, defaultCategory, updateExisting, defaultStatus }
  */
 function runImport(urlOrId, tabName, mapping, options) {
+  requireRole_('Rep');
   options = options || {};
   var src = openImportSource_(urlOrId, tabName);
   var values = src.sheet.getDataRange().getDisplayValues();

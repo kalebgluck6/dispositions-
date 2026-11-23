@@ -188,6 +188,78 @@ Runs every 2 hours, 8 AM–8 PM. Each reminder is sent **once**, to one buyer at
 
 Rep alerts arrive as **one digest email per rep**. A deal's rep is set on the deal (pick from the reps listed in Settings); otherwise alerts go to your Reply-To address. **Follow-Up Center** shows what's due, the alerts and the full history, and has a **Send due follow-ups now** button.
 
+## Performance, intelligence & automation (phase 2)
+
+### Performance Reports (CEO dashboard)
+An ownership view for you and your co-owner, filterable to the last 30, 90, 180 or 365 days. Each chart can be switched to a table.
+
+**Headline numbers:**
+* assignment revenue and average assignment fee
+* deals distributed and average offers per deal
+* average time to secure a buyer (first distribution → buyer selected)
+* distribution → contract conversion
+* buyer response rate and buyer → closing conversion
+
+**Charts and lists:**
+* revenue by month, by **market** and by **disposition rep**
+* the pipeline right now
+* top-performing investors
+* **deals sitting too long without activity**
+
+Revenue per deal = sale price − the deal's private contract price. If the contract price isn't entered, the deal's assignment price is used.
+
+### Buyer intelligence
+* **Heat score (0–100), per buyer:**
+
+  | Factor | Points |
+  |---|---|
+  | Responsiveness | 35 |
+  | Interest | 15 |
+  | Offers | 20 |
+  | Closings and public purchases | 30 |
+  | Recent activity | 10 |
+  | Each failed closing | −15 |
+
+  Written to the *Heat Score* column nightly.
+* **Buyer Activity History:** each investor's profile shows every deal they were sent and how they responded: no response, passed (with the reason), made an offer, selected or bought it.
+* **Closing Performance:** response rate, interested deals, offers, closings, failed closings and close rate per buyer.
+* **Best Buyer Predictor:** on every Matches view, *Likely to buy* blends buy-box fit (60%) with real behavior (heat, 40%). The most likely buyers are listed first.
+* **Automatic Tier Upgrades (nightly, 2 AM):**
+  * **Top tier:** 2+ deals closed with you, heat 60+, and reliability 4★ or better.
+  * **Second tier:** 1+ closed, or heat 45+ with verified proof of funds.
+  * **Demotion:** one tier after 2+ failed closings, at most once per 90 days.
+  * Every change is noted on the buyer, the thresholds are in Settings, and **Buyer Tiers** shows recommended changes before they're applied.
+
+### Distribution tools
+* **Distribution Analytics:** for every deal blast, how many buyers received it, responded, were interested and made offers, plus how many are competing, pass reasons, time to first reply and wave breakdown. Overall pass reasons are also charted.
+  * Opens and clicks are **not** tracked. They need a public tracking link, and your app is private to your Google account.
+* **Deal Feedback:** the "Not for me" button asks why. Replies are classified as Price, Location, Condition, Numbers, Timing or Other, and logged calls can record a reason too.
+* **Buyer Competition Tracker:** shows how many distinct buyers are interested or have open offers on each deal. When 2 or more are, follow-up emails say so (it's a real count).
+* **Offer Deadline System:** the deal email shows "Offers due by …", buyers get a reminder 24 hours before, and the rep gets an alert once the deadline passes with the number of offers to review.
+* **Price Reduction Alerts:** lower a deal's price and a **Send price-drop alert** button appears. It goes to everyone who received the deal plus current matches, with a "PRICE REDUCED $X → $Y" subject and banner. It uses the same confirmation as any send, and test mode applies.
+* **Dead Deal Recovery:** a deal with no acceptable offer (fee below *Acceptable fee*, default $5,000, and offer below 95% of asking) 5 days after distribution is flagged. The rep gets an alert, and **Buyer Tiers → Re-send to next ring** sends it to weaker matches who haven't seen it yet. Set *Automatic recovery re-send* to Yes to have the nightly job do this on its own.
+* **Investor Reactivation:** finds buyers who received 2+ deals but haven't responded in 90 days and sends them a "Still buying? Update your buy box" email that links to your signup form. Each buyer is contacted at most once per 90 days, and live sends need **SEND** typed.
+
+### Land intelligence
+* **Parcel and buildability details on each land deal:** acreage, parcel ID, zoning and zoning restrictions, potential lots, density, road frontage, road access, utilities, flood zone, wetlands and soil/septic. They're shown in the investor email.
+* **Land Buyers & Builders:** a land-buyer database of builders, developers and land buyers, ranked by how much land they actually buy (public records plus deals bought from you), with their buy boxes.
+* **Builder Activity by Market:** shows which builders are repeatedly buying lots in each market.
+* **Land deal matching:** land deals are smart-matched only to land buyers, by geography and acreage.
+
+### Buyer Tiers & Market Management
+* **Buyer Tiers:** members and average heat per tier, recommended changes, dead-deal recovery and the reactivation campaign.
+* **Market Management:** edit your markets list. For each market it shows active buyers, land buyers, buyers with verified funds, available deals, deals under contract, closings, revenue, average fee and top buyers.
+
+### Team permissions
+In **Settings → Team & Permissions**, list members one per line as `email: Role`:
+* **Owner:** everything, including settings, going live, the DealMachine key, schedules and deleting buyers.
+* **Rep:** day-to-day work.
+* **Viewer:** read-only.
+
+When the list is blank, the app is single-user and you are the Owner.
+
+Teammates can sign in only if the web app is deployed with **Who has access: Anyone within your Google Workspace domain**, because Google only reveals a visitor's email to apps in the same Workspace. On a personal @gmail.com account, keep *Only myself*. Background jobs aren't affected by roles.
+
 ## New Buyers (daily intake)
 
 Open **New Buyers** in the app. Turn on the sources you want and click **Turn on daily intake**, choosing the hour it runs (6 AM by default).
@@ -264,7 +336,7 @@ You can add your own columns to any tab, because the app finds columns by header
 You don't need any of this to *use* the system. It's for changing the code.
 
 ```bash
-npm test                 # runs the backend against an in-memory Apps Script mock (48 end-to-end checks)
+npm test                 # runs the backend against an in-memory Apps Script mock (59 end-to-end checks)
 npm run preview          # builds preview/index.html — the real UI + real server code with sample data, nothing is emailed
 ```
 

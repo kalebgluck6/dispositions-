@@ -41,6 +41,19 @@ function parseOffer_(text) {
   return n > 0 ? n : '';
 }
 
+/** Why a buyer passed: Price / Location / Condition / Numbers / Timing / Other. */
+function passReasonOf_(text) {
+  var t = lc_(text);
+  var line = (t.match(/main reason[^\n]*:\s*([^\n]+)/) || [])[1];
+  if (line && !/price \/ location/.test(line)) t = line + ' ' + t;
+  if (/\bprice\b|too high|overpriced|expensive|asking/.test(t)) return 'Price';
+  if (/\bnumbers?\b|\barv\b|comps?|margin|spread|roi|doesn.t pencil|math/.test(t)) return 'Numbers';
+  if (/location|area|neighbou?rhood|school|crime|too far|market/.test(t)) return 'Location';
+  if (/condition|repairs?|rehab|foundation|roof|too much work|structural/.test(t)) return 'Condition';
+  if (/timing|busy|capital|funds|tied up|bandwidth|not buying right now/.test(t)) return 'Timing';
+  return 'Other';
+}
+
 function classifyReply_(subject, body) {
   var s = String(subject || '').replace(/^(re|fw|fwd)\s*:\s*/ig, '').trim();
   var b = String(body || '').toLowerCase();
@@ -128,6 +141,7 @@ function scanInboxForResponses() {
             investorEmail: from.email, received: msg.getDate(), type: type,
             offerAmount: type === 'Offer' ? parseOffer_(body) : '', message: body,
             source: 'Email (auto)', followUp: type === 'Unsubscribe' || type === 'Not Interested' ? 'Closed' : 'New',
+            passReason: type === 'Not Interested' ? passReasonOf_(body) : '',
             notes: inv ? '' : 'Sender not in investor database', messageId: mid
           });
           if (dealId) touchedDeals[dealId] = true;
@@ -153,11 +167,13 @@ function scanInboxForResponses() {
 }
 
 function listResponses() {
+  requireRole_('Viewer');
   return toClient_(readTable_(SHEET.RESPONSES).rows.reverse());
 }
 
 /** Manually log a response (phone call, text, in-person). */
 function logResponse(r) {
+  requireRole_('Rep');
   return withLock_(function () {
     r = r || {};
     if (!r.dealId) throw new Error('Choose a deal.');
@@ -170,7 +186,8 @@ function logResponse(r) {
       investorId: inv ? inv.id : '', investorName: inv ? investorName_(inv) : str_(r.investorName),
       investorEmail: inv ? lc_(inv.email) : lc_(r.investorEmail), received: new Date(), type: type,
       offerAmount: num_(r.offerAmount), message: str_(r.message), source: 'Manual',
-      followUp: FOLLOW_UP_STATUSES.indexOf(r.followUp) > -1 ? r.followUp : 'New', notes: str_(r.notes), messageId: ''
+      followUp: FOLLOW_UP_STATUSES.indexOf(r.followUp) > -1 ? r.followUp : 'New', notes: str_(r.notes), messageId: '',
+      passReason: type === 'Not Interested' ? (PASS_REASONS.indexOf(r.passReason) > -1 ? r.passReason : passReasonOf_(r.message)) : ''
     };
     appendObjects_(SHEET.RESPONSES, [row]);
     if (type === 'Unsubscribe' && inv) updateObject_(SHEET.INVESTORS, inv._row, { optOut: true, updated: new Date() });
@@ -182,6 +199,7 @@ function logResponse(r) {
 }
 
 function updateResponse(id, fields) {
+  requireRole_('Rep');
   return withLock_(function () {
     var r = findBy_(SHEET.RESPONSES, 'id', id);
     if (!r) throw new Error('Response not found.');
@@ -197,6 +215,7 @@ function updateResponse(id, fields) {
 }
 
 function enableAutoTracking() {
+  requireRole_('Owner');
   if (!hasTrigger_('scanInboxForResponses')) {
     ScriptApp.newTrigger('scanInboxForResponses').timeBased().everyMinutes(15).create();
   }
@@ -204,6 +223,7 @@ function enableAutoTracking() {
 }
 
 function disableAutoTracking() {
+  requireRole_('Owner');
   deleteTriggers_('scanInboxForResponses');
   return getSettings();
 }

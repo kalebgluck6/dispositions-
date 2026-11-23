@@ -55,11 +55,13 @@ function cleanInvestorRow_(r) {
 // ---------- client API ----------
 
 function listInvestors() {
+  requireRole_('Viewer');
   return readTable_(SHEET.INVESTORS).rows.map(cleanInvestorRow_);
 }
 
 /** Creates or updates an investor. Emails are unique (case-insensitive). */
 function saveInvestor(inv) {
+  requireRole_('Rep');
   return withLock_(function () {
     var data = normalizeInvestor_(inv || {});
     if (data.email ? !isEmail_(data.email) : data.status !== PENDING_REVIEW) {
@@ -93,6 +95,7 @@ function saveInvestor(inv) {
  *   status ('Active'|'Inactive'), tier, addCategory, removeCategory, optOut (bool)
  */
 function updateInvestors(ids, changes) {
+  requireRole_('Rep');
   return withLock_(function () {
     ids = ids || [];
     changes = changes || {};
@@ -119,6 +122,7 @@ function updateInvestors(ids, changes) {
 
 /** Permanently deletes investors (distribution history is kept in the log). */
 function deleteInvestors(ids, confirmation) {
+  requireRole_('Owner');
   if (String(confirmation || '').trim().toUpperCase() !== 'DELETE') {
     throw new Error('Type DELETE to permanently remove investors. (Tip: deactivate instead to keep their history.)');
   }
@@ -134,6 +138,7 @@ function deleteInvestors(ids, confirmation) {
 
 /** Every deal sent to an investor plus their responses. */
 function getInvestorHistory(investorId) {
+  requireRole_('Viewer');
   var deals = {};
   readTable_(SHEET.DEALS).rows.forEach(function (d) { deals[d.id] = dealTitle_(d); });
   var sends = readTable_(SHEET.LOG).rows

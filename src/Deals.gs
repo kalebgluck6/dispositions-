@@ -50,6 +50,7 @@ function cleanDealRow_(r) {
   o.daysInStage = since ? Math.floor((Date.now() - since.getTime()) / 86400000) : 0;
   o.stuck = ['Closed', 'Dead Deal'].indexOf(o.stage) === -1 && o.daysInStage >= (parseInt(getSettings_().FU_STUCK_DAYS, 10) || 7);
   o.acresNum = dealAcres_(r);
+  o.priceReduced = !!(Number(r.previousPrice) && Number(r.previousPrice) > Number(r.askingPrice));
   o.isLand = isLandDeal_(r);
   return o;
 }
@@ -119,7 +120,16 @@ function normalizeDeal_(deal) {
     zoning: str_(deal.zoning),
     contractPrice: num_(deal.contractPrice),
     offerDeadline: str_(deal.offerDeadline).replace('T', ' '),
-    rep: str_(deal.rep)
+    rep: str_(deal.rep),
+    roadFrontage: num_(deal.roadFrontage),
+    utilities: str_(deal.utilities),
+    floodZone: str_(deal.floodZone),
+    wetlands: str_(deal.wetlands),
+    soilSeptic: str_(deal.soilSeptic),
+    roadAccess: str_(deal.roadAccess),
+    potentialLots: num_(deal.potentialLots),
+    density: str_(deal.density),
+    zoningNotes: str_(deal.zoningNotes)
   };
 }
 
@@ -166,15 +176,18 @@ function blobFromBase64_(base64, mimeType, fileName) {
 // ---------- client API ----------
 
 function listDeals() {
+  requireRole_('Viewer');
   return readTable_(SHEET.DEALS).rows.map(cleanDealRow_).reverse();
 }
 
 function getDeal(dealId) {
+  requireRole_('Viewer');
   return cleanDealRow_(getDealRow_(dealId));
 }
 
 /** Creates or updates a deal. Returns the saved deal. */
 function saveDeal(deal) {
+  requireRole_('Rep');
   return withLock_(function () {
     deal = deal || {};
     var data = normalizeDeal_(deal);
@@ -183,6 +196,11 @@ function saveDeal(deal) {
     data.updated = new Date();
     if (deal.id) {
       var existing = getDealRow_(deal.id);
+      // price reduction → remember the old price so buyers can be alerted
+      if (Number(existing.askingPrice) && Number(data.askingPrice) && Number(data.askingPrice) < Number(existing.askingPrice)) {
+        data.previousPrice = Number(existing.askingPrice);
+        data.priceReducedOn = new Date();
+      }
       updateObject_(SHEET.DEALS, existing._row, data);
       data.id = deal.id;
     } else {
@@ -204,6 +222,7 @@ function saveDeal(deal) {
 
 /** Marks a deal Available / Pending / Sold. extra: { buyer, soldPrice } */
 function setDealStatus(dealId, status, extra) {
+  requireRole_('Rep');
   if (DEAL_STATUSES.indexOf(status) === -1) throw new Error('Unknown status ' + status);
   return withLock_(function () {
     var d = getDealRow_(dealId);
@@ -232,6 +251,7 @@ function setDealStatus(dealId, status, extra) {
  * Closed records a completed transaction for the buyer; Dead Deal stops distribution.
  */
 function setDealStage(dealId, stage, extra) {
+  requireRole_('Rep');
   if (PIPELINE_STAGES.indexOf(stage) === -1) throw new Error('Unknown stage ' + stage);
   extra = extra || {};
   return withLock_(function () {
@@ -246,6 +266,7 @@ function setDealStage(dealId, stage, extra) {
     if (extra.emdAmount !== undefined) f.emdAmount = num_(extra.emdAmount);
     if (extra.closingDate) f.closingDate = str_(extra.closingDate);
     if (stage === 'Assignment Signed' && !d.assignmentSigned) f.assignmentSigned = new Date();
+    if (PIPELINE_STAGES.indexOf(stage) >= 5 && PIPELINE_STAGES.indexOf(stage) <= 9 && !d.buyerSelectedOn) f.buyerSelectedOn = new Date();
     if (stage === 'EMD Received' && !d.emdReceived) f.emdReceived = new Date();
     if (stage === 'Closed') {
       f.soldDate = new Date();
@@ -268,6 +289,7 @@ function setDealStage(dealId, stage, extra) {
 
 /** Board data: every deal with stage, days in stage, offers and the selected buyer. */
 function getPipeline() {
+  requireRole_('Viewer');
   var offers = {};
   readTable_(SHEET.OFFERS).rows.forEach(function (o) {
     var x = offers[o.dealId] || (offers[o.dealId] = { count: 0, best: 0, active: 0 });
@@ -282,6 +304,7 @@ function getPipeline() {
 
 /** Uploads one photo (base64, already resized in the browser). */
 function uploadDealPhoto(dealId, fileName, mimeType, base64) {
+  requireRole_('Rep');
   if (!/^image\//.test(mimeType || '')) throw new Error('Only image files can be uploaded as photos.');
   var deal = getDealRow_(dealId);
   var ids = photoIds_(deal);
@@ -299,6 +322,7 @@ function uploadDealPhoto(dealId, fileName, mimeType, base64) {
 }
 
 function removeDealPhoto(dealId, fileId) {
+  requireRole_('Rep');
   return withLock_(function () {
     var d = getDealRow_(dealId);
     var list = photoIds_(d).filter(function (id) { return id !== fileId; });
@@ -310,6 +334,7 @@ function removeDealPhoto(dealId, fileId) {
 
 /** Moves a photo to the front so it becomes the cover image. */
 function setCoverPhoto(dealId, fileId) {
+  requireRole_('Rep');
   return withLock_(function () {
     var d = getDealRow_(dealId);
     var list = photoIds_(d).filter(function (id) { return id !== fileId; });
@@ -321,6 +346,7 @@ function setCoverPhoto(dealId, fileId) {
 
 /** Small previews of a deal's photos for the web app. */
 function getDealPhotoPreviews(dealId) {
+  requireRole_('Viewer');
   var d = getDealRow_(dealId);
   return photoIds_(d).map(function (id) {
     try {
@@ -342,6 +368,7 @@ function getDealPhotoPreviews(dealId) {
 
 /** Uploads a walkthrough video file to Drive and links it to the deal. */
 function uploadDealVideo(dealId, fileName, mimeType, base64) {
+  requireRole_('Rep');
   if (!/^video\//.test(mimeType || '')) throw new Error('Please choose a video file.');
   var deal = getDealRow_(dealId);
   var folder = dealFolder_(deal);
@@ -356,6 +383,7 @@ function uploadDealVideo(dealId, fileName, mimeType, base64) {
 
 /** Full tracking picture for a deal: recipients, jobs, responses. */
 function getDealTracking(dealId) {
+  requireRole_('Viewer');
   var deal = getDeal(dealId);
   var log = readTable_(SHEET.LOG).rows.filter(function (l) { return l.dealId === dealId; });
   var jobs = readTable_(SHEET.JOBS).rows.filter(function (j) { return j.dealId === dealId; });

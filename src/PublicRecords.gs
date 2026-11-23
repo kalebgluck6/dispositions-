@@ -86,7 +86,7 @@ function groupSales_(sales, days, sourceNote) {
     else { var p = titleCase_(s.name).split(/\s+/); first = p.shift(); last = p.join(' '); }
     var summary = g.buys.slice(0, 5).map(function (b) {
       return [titleCase_(b.addr), titleCase_(b.city)].filter(String).join(', ') + (b.price ? ' — ' + money_(b.price) : '') +
-        (b.financing ? ', ' + b.financing : '') + (b.date ? ' (' + fmtDate_(b.date, 'MMM d, yyyy') + ')' : '');
+        (b.financing ? ', ' + b.financing : '') + (/land|lot|development|acre/i.test(String(b.type)) ? ' · land' : '') + (b.date ? ' (' + fmtDate_(b.date, 'MMM d, yyyy') + ')' : '');
     }).join('; ') + (g.buys.length > 5 ? '; +' + (g.buys.length - 5) + ' more' : '');
     var how = fin.length === 1 ? ' with ' + fin[0] : fin.length ? ' (cash / hard money)' : '';
     var landBuys = g.buys.filter(function (b) { return /land|lot|development|acre/i.test(String(b.type)); }).length;
@@ -403,6 +403,7 @@ function countyLeads_(ctx) {
 
 /** Saves (and tests) the DealMachine API key. The key is stored privately, never in the sheet. */
 function saveDealMachineKey(key) {
+  requireRole_('Owner');
   key = str_(key);
   var props = PropertiesService.getScriptProperties();
   if (!key) { props.deleteProperty('DM_API_KEY'); return getIntakeStatus(); }
@@ -420,6 +421,7 @@ function saveDealMachineKey(key) {
 
 /** Free preview: how many recent cash / hard-money sales match right now (count endpoints cost no credits). */
 function previewDealMachine() {
+  requireRole_('Rep');
   var s = getSettings_();
   var fips = dmAreas_().map(function (a) { return a.fips; });
   var out = {};

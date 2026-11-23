@@ -25,7 +25,9 @@ var FU_TYPES = {
   emd: 'EMD reminder',
   closing: 'Closing reminder',
   quiet: 'Buyer went quiet',
-  stuck: 'Deal stuck'
+  stuck: 'Deal stuck',
+  deadlinepassed: 'Offer deadline passed',
+  recovery: 'Needs recovery'
 };
 
 function hoursSince_(v) { var d = asDate_(v); return d ? (Date.now() - d.getTime()) / 3600000 : Infinity; }
@@ -128,9 +130,23 @@ function planFollowUps_() {
       }
     }
 
+    // offer deadline passed → rep reviews offers
+    if (deadline && deadline.getTime() <= Date.now() && Date.now() - deadline.getTime() < 7 * 86400000 && d.status === 'Available') {
+      var nOff = offers.filter(function (o) { return o.dealId === d.id && ACTIVE_OFFER.indexOf(o.status) > -1; }).length;
+      add('deadlinepassed|' + d.id + '|' + fmtDate_(deadline, 'yyyyMMddHHmm'), 'deadlinepassed', d, null, 'rep', nOff + ' offer' + (nOff === 1 ? '' : 's') + ' to review');
+    }
+
     // stuck deals → rep
     if (d.stuck) add('stuck|' + d.id + '|' + fmtDate_(asDate_(d._raw.stageUpdated) || asDate_(d._raw.updated) || new Date()), 'stuck', d, null, 'rep', d.stage + ' for ' + d.daysInStage + ' days');
   });
+
+  // dead-deal recovery suggestions → rep (automatic re-send happens nightly only if RECOVERY_AUTO)
+  try {
+    recoveryCandidates_({ deals: readTable_(SHEET.DEALS).rows, offers: offers, jobs: readTable_(SHEET.JOBS).rows }).forEach(function (c) {
+      var d = deals.filter(function (x) { return x.id === c.dealId; })[0];
+      if (d) add('recovery|' + c.dealId + '|' + fmtDate_(new Date(), 'yyyyMMdd').slice(0, 6) + Math.floor(new Date().getDate() / 7), 'recovery', d, null, 'rep', c.days + ' days, ' + (c.offers ? 'best offer ' + money_(c.bestOffer) : 'no offers') + ' — re-send to the next ring of buyers');
+    });
+  } catch (e) { /* optional */ }
 
   // proof of funds (per offer, up to 3 reminders 48h apart)
   offers.forEach(function (o) {
@@ -156,9 +172,11 @@ function fuEmail_(type, deal, inv, settings) {
   var title = deal.title || dealTitle_(deal);
   var price = money_(deal.askingPrice);
   var deadline = asDate_(deal.offerDeadline);
+  var compN = Number(deal._competition) || 0;
+  var compLine = compN >= 2 ? ' ' + compN + ' buyers are actively reviewing this one.' : '';
   var copy = {
-    noresp: ['Still available: ' + title, 'Checking in on ' + title + ' (' + price + (deal.arv ? ', ARV ' + money_(deal.arv) : '') + '). It fits what you buy and it\'s still available. Want to take a look or make an offer?'],
-    offer: ['Ready to make an offer on ' + title + '?', 'Thanks for your interest in ' + title + '. If it works for you, send your offer and we\'ll lock it up.' + (deadline ? ' Offers are due ' + fmtDate_(deadline, 'EEEE, MMM d \'at\' h:mm a') + '.' : '')],
+    noresp: ['Still available: ' + title, 'Checking in on ' + title + ' (' + price + (deal.arv ? ', ARV ' + money_(deal.arv) : '') + '). It fits what you buy and it\'s still available.' + compLine + ' Want to take a look or make an offer?'],
+    offer: ['Ready to make an offer on ' + title + '?', 'Thanks for your interest in ' + title + '. If it works for you, send your offer and we\'ll lock it up.' + compLine + (deadline ? ' Offers are due ' + fmtDate_(deadline, 'EEEE, MMM d \'at\' h:mm a') + '.' : '')],
     deadline: ['Offer deadline approaching: ' + title, 'Offers on ' + title + ' are due ' + (deadline ? fmtDate_(deadline, 'EEEE, MMM d \'at\' h:mm a') : 'soon') + '. If you want it, get your offer in now.'],
     pof: ['Proof of funds needed: ' + title, 'We received your offer on ' + title + ' — thank you. To keep it in consideration, please reply with proof of funds (bank statement or lender letter dated within the last 30 days).'],
     emd: ['EMD reminder: ' + title, 'Quick reminder to submit your earnest money deposit' + (deal.emdAmount ? ' of ' + money_(deal.emdAmount) : '') + ' for ' + title + ' so we can keep closing on track.'],
@@ -208,7 +226,8 @@ function runFollowUps_(force) {
   var test = isTestMode_(), testTo = str_(s.TEST_EMAIL) || currentUser_();
   var invById = {}, dealById = {};
   readTable_(SHEET.INVESTORS).rows.forEach(function (i) { invById[i.id] = i; });
-  readTable_(SHEET.DEALS).rows.forEach(function (d) { var c = cleanDealRow_(d); dealById[c.id] = c; });
+  var comp = competitionMap_({ resp: readTable_(SHEET.RESPONSES).rows, offers: readTable_(SHEET.OFFERS).rows });
+  readTable_(SHEET.DEALS).rows.forEach(function (d) { var c = cleanDealRow_(d); c._competition = comp[c.id] || 0; dealById[c.id] = c; });
   var log = [], sentCount = 0, quota = remainingQuota_();
   if (quota < 0) quota = 1e9;
   var digests = {};
@@ -248,6 +267,7 @@ function runFollowUps() {
 // ---------- client API ----------
 
 function runFollowUpsNow() {
+  requireRole_('Rep');
   var r = withLock_(function () { return runFollowUps_(true); });
   var c = getFollowUpCenter();
   c.run = r;
@@ -255,6 +275,7 @@ function runFollowUpsNow() {
 }
 
 function getFollowUpCenter() {
+  requireRole_('Viewer');
   var s = getSettings_();
   var plan = planFollowUps_();
   var deals = listDeals();
@@ -269,6 +290,7 @@ function getFollowUpCenter() {
 }
 
 function enableFollowUps() {
+  requireRole_('Owner');
   deleteTriggers_('runFollowUps');
   ScriptApp.newTrigger('runFollowUps').timeBased().everyHours(2).create();
   setSetting_('FU_ON', 'TRUE');
@@ -276,6 +298,7 @@ function enableFollowUps() {
 }
 
 function disableFollowUps() {
+  requireRole_('Owner');
   deleteTriggers_('runFollowUps');
   setSetting_('FU_ON', 'FALSE');
   return getFollowUpCenter();

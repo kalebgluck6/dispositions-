@@ -28,6 +28,7 @@ function onOpen() {
     .addItem('Resume queued distributions', 'runQueuedDistributions')
     .addItem('Find new buyers now', 'runBuyerIntake')
     .addItem('Run buyer follow-ups now', 'runFollowUpsNow')
+    .addItem('Run nightly analytics now (heat scores, tiers)', 'runNightly')
     .addToUi();
 }
 
@@ -66,9 +67,11 @@ function setup() {
 
 /** Everything the app needs on first load, in one round-trip. */
 function getBootstrap() {
+  requireRole_('Viewer');
   ensureSettings_();
   return {
     settings: getSettings(),
+    me: whoAmI(),
     investors: listInvestors(),
     deals: listDeals(),
     dashboard: getDashboard()
@@ -76,6 +79,7 @@ function getBootstrap() {
 }
 
 function getDashboard() {
+  requireRole_('Viewer');
   var investors = readTable_(SHEET.INVESTORS).rows;
   var deals = readTable_(SHEET.DEALS).rows;
   var jobs = readTable_(SHEET.JOBS).rows;

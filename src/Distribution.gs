@@ -56,6 +56,19 @@ function resolveAudience_(deal, audience, investors, logRows) {
   var tiers = list_(audience.tiers), cats = list_(audience.categories), mkts = list_(audience.markets);
   var picked = audience.investorIds || [];
   var already = {};
+  var priorRecipients = {};
+  logRows.forEach(function (l) { if (l.dealId === deal.id && l.mode === 'LIVE' && l.status === 'Sent') priorRecipients[l.investorId] = true; });
+  if (mode === 'priceDrop') {
+    // everyone who already received it + current matches (smart scoring)
+    audience = Object.assign({}, audience, { mode: 'smart', includeOthers: false, waves: false, excludeAlreadySent: false, _priceDrop: true });
+    mode = 'smart';
+  }
+  if (mode === 'recovery') {
+    // the next ring of buyers: weaker matches who haven't received it yet
+    audience = Object.assign({}, audience, { mode: 'smart', waves: false, includeOthers: false, excludeAlreadySent: true,
+      minScore: Math.max(20, (parseInt(getSettings_().MATCH_MIN_SCORE, 10) || 50) - 20) });
+    mode = 'smart';
+  }
   if (audience.excludeAlreadySent) {
     logRows.forEach(function (l) {
       if (l.dealId === deal.id && l.mode === 'LIVE' && l.status === 'Sent') already[l.investorId] = true;
@@ -94,7 +107,7 @@ function resolveAudience_(deal, audience, investors, logRows) {
     if (smart) {
       var m = smart[inv.id];
       score = m.score;
-      if (!m.matched) {
+      if (!m.matched && !(audience._priceDrop && priorRecipients[inv.id])) {
         if (!audience.includeOthers) { ex.notMatched++; return; }
         wave = 3;
       } else wave = audience.waves === false || m.tierRank === topRank ? 1 : 2;
@@ -112,7 +125,9 @@ function resolveAudience_(deal, audience, investors, logRows) {
 function describeAudience_(a) {
   a = a || {};
   var parts = [];
-  if (a.mode === 'smart') parts.push('Smart match ≥ ' + (Number(a.minScore) || parseInt(getSettings_().MATCH_MIN_SCORE, 10) || 50) + (a.waves === false ? '' : ', priority waves') + (a.includeOthers ? ' + all other active buyers last' : ''));
+  if (a.mode === 'priceDrop') parts.push('Price-reduction alert: previous recipients + matched buyers');
+  else if (a.mode === 'recovery') parts.push('Dead-deal recovery: next ring of matched buyers');
+  else if (a.mode === 'smart') parts.push('Smart match ≥ ' + (Number(a.minScore) || parseInt(getSettings_().MATCH_MIN_SCORE, 10) || 50) + (a.waves === false ? '' : ', priority waves') + (a.includeOthers ? ' + all other active buyers last' : ''));
   else if (a.mode === 'selected') parts.push('Hand-picked (' + (a.investorIds || []).length + ')');
   else if (a.mode === 'segments') {
     if (list_(a.tiers).length) parts.push('Tiers: ' + list_(a.tiers).join('/'));
@@ -134,6 +149,7 @@ function maskEmail_(e) {
 // ---------- client API ----------
 
 function previewAudience(dealId, audience) {
+  requireRole_('Viewer');
   var deal = getDealRow_(dealId);
   var res = resolveAudience_(deal, audience, readTable_(SHEET.INVESTORS).rows, readTable_(SHEET.LOG).rows);
   return {
@@ -150,6 +166,7 @@ function previewAudience(dealId, audience) {
 
 /** Sends a single preview of the deal email to one address (defaults to TEST_EMAIL). */
 function sendTestEmail(dealId, toEmail) {
+  requireRole_('Rep');
   var settings = getSettings_();
   var to = str_(toEmail) || str_(settings.TEST_EMAIL) || currentUser_();
   if (!isEmail_(to)) throw new Error('Enter a valid email address for the test.');
@@ -168,6 +185,7 @@ function sendTestEmail(dealId, toEmail) {
  * Locks in the recipient list and returns a one-time confirmation token (valid 15 minutes).
  */
 function prepareDistribution(dealId, audience) {
+  requireRole_('Rep');
   var deal = getDealRow_(dealId);
   if (str_(deal.status) === 'Sold') throw new Error('This deal is marked SOLD. Change its status before distributing.');
   if (str_(deal.status) === 'Dead') throw new Error('This deal is marked DEAD. Change its status before distributing.');
@@ -177,6 +195,7 @@ function prepareDistribution(dealId, audience) {
   var testMode = isTestMode_();
   var token = Utilities.getUuid();
   var payload = {
+    kind: audience && audience.mode === 'priceDrop' ? 'price_drop' : audience && audience.mode === 'recovery' ? 'recovery' : '',
     dealId: dealId,
     audience: audience || { mode: 'all' },
     ids: res.included.map(function (i) { return i.id; }),
@@ -209,6 +228,12 @@ function prepareDistribution(dealId, audience) {
  * Executes a prepared distribution. In LIVE mode `typed` must be exactly "SEND".
  */
 function confirmDistribution(token, typed) {
+  requireRole_('Rep');
+  return confirmDistribution_(token, typed, false);
+}
+
+/** internal = queued by the system itself (automatic recovery), not from the screen. */
+function confirmDistribution_(token, typed, internal) {
   var raw = CacheService.getScriptCache().get('dist_' + token);
   if (!raw) throw new Error('This confirmation has expired. Please review the distribution again.');
   var p = JSON.parse(raw);
@@ -249,7 +274,7 @@ function confirmDistribution(token, typed) {
       id: id, dealId: p.dealId, property: dealTitle_(deal), mode: p.mode, audience: describeAudience_(p.audience),
       created: now, createdBy: p.user || currentUser_(), total: rows.length, sent: 0, failed: 0,
       simulated: rows.filter(function (r) { return r.status === 'Simulated'; }).length,
-      status: 'Sending', completed: '', notes: ''
+      status: 'Sending', completed: '', notes: '', kind: p.kind || ''
     }]);
     appendObjects_(SHEET.LOG, rows);
     return id;
@@ -260,6 +285,7 @@ function confirmDistribution(token, typed) {
 }
 
 function getJobStatus(jobId) {
+  requireRole_('Viewer');
   var job = findBy_(SHEET.JOBS, 'id', jobId);
   if (!job) throw new Error('Job ' + jobId + ' not found.');
   var queued = readTable_(SHEET.LOG).rows.filter(function (l) { return l.jobId === jobId && l.status === 'Queued'; }).length;
@@ -270,11 +296,13 @@ function getJobStatus(jobId) {
 }
 
 function listJobs() {
+  requireRole_('Viewer');
   return toClient_(readTable_(SHEET.JOBS).rows.reverse());
 }
 
 /** Cancels the not-yet-sent part of a job. */
 function cancelJob(jobId) {
+  requireRole_('Rep');
   return withLock_(function () {
     var t = readTable_(SHEET.LOG);
     t.rows.forEach(function (l) {
@@ -294,6 +322,11 @@ function runQueuedDistributions() {
 // ---------- queue internals ----------
 
 function processQueueSafely_(jobId) {
+  if (_lockDepth > 0) { // already inside a locked operation (e.g. nightly automation)
+    var r0 = processQueue_(jobId, QUEUE_TIME_BUDGET_MS);
+    if (r0 && r0.remaining > 0) scheduleQueue_(r0.dueRemaining ? 60 * 1000 : Math.max(60 * 1000, Math.min(r0.nextDueMs || 0, 6 * 3600 * 1000)));
+    return;
+  }
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) { scheduleQueue_(60 * 1000); return; }
   var res;
@@ -334,7 +367,9 @@ function processQueue_(onlyJobId, budgetMs) {
   }
   var quota = remainingQuota_();
   if (quota < 0) quota = 1e9; // quota unavailable — let Gmail enforce it
-  var cache = {};       // dealId+mode → { email, imgs }
+  var cache = {};       // dealId+mode+kind → { email, imgs }
+  var jobKind = {};
+  readTable_(SHEET.JOBS).rows.forEach(function (j) { jobKind[j.id] = str_(j.kind); });
   var investorsById = {};
   readTable_(SHEET.INVESTORS).rows.forEach(function (i) { investorsById[i.id] = i; });
   var sentLive = [];    // investor ids sent live in this run
@@ -347,12 +382,13 @@ function processQueue_(onlyJobId, budgetMs) {
     if (Date.now() - started > budgetMs) break;
     if (quota <= 0) { quotaExhausted = true; break; }
     var row = queued[i];
-    var key = row.dealId + '|' + row.mode;
+    var kind = jobKind[row.jobId] || '';
+    var key = row.dealId + '|' + row.mode + '|' + kind;
     try {
       if (!cache[key]) {
         var deal = getDealRow_(row.dealId);
         var imgs = loadInlineImages_(deal, Number(settings.EMAIL_PHOTO_COUNT) || 4);
-        cache[key] = { email: buildDealEmail_(deal, settings, { photoCount: imgs.count }), imgs: imgs };
+        cache[key] = { email: buildDealEmail_(deal, settings, { photoCount: imgs.count, kind: kind }), imgs: imgs };
       }
       var c = cache[key];
       var inv = investorsById[row.investorId] || { id: row.investorId, firstName: String(row.investorName).split(' ')[0], email: row.investorEmail };
@@ -486,6 +522,7 @@ function refreshJob_(jobId, quotaExhausted) {
       if (c.Queued === 0 && !wasDone && c.Sent > 0) df.timesDistributed = (Number(deal.timesDistributed) || 0) + 1;
       updateObject_(SHEET.DEALS, deal._row, df);
       if (c.Sent > 0) advanceStage_(job.dealId, 'Distributed');
+      if (c.Sent > 0 && !deal.firstDistributed) updateObject_(SHEET.DEALS, deal._row, { firstDistributed: new Date() });
     }
   }
 }
