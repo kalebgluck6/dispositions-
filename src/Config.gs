@@ -18,7 +18,9 @@ var SHEET = {
   JOBS: 'Distribution Jobs',
   LOG: 'Distribution Log',
   RESPONSES: 'Responses',
-  INTAKE: 'Buyer Intake Log'
+  INTAKE: 'Buyer Intake Log',
+  OFFERS: 'Offers',
+  FOLLOWUPS: 'Follow-Ups'
 };
 
 var INVESTOR_MAP = {
@@ -46,7 +48,24 @@ var INVESTOR_MAP = {
   mailingAddress: 'Mailing Address',
   purchases: 'Recent Purchases',
   purchaseCount: 'Purchase Count',
-  lastPurchase: 'Last Purchase Date'
+  lastPurchase: 'Last Purchase Date',
+  // ---- buy box profile ----
+  zips: 'Preferred Zip Codes',
+  minAcres: 'Min Acreage',
+  maxAcres: 'Max Acreage',
+  condition: 'Rehab Preference',
+  funding: 'Funding',
+  minRoi: 'Preferred ROI %',
+  closeDays: 'Typical Close (days)',
+  lastDealBought: 'Last Deal Bought (SDI)',
+  // ---- verification ----
+  pofAmount: 'POF Amount',
+  pofExpires: 'POF Expires',
+  pofFileUrl: 'POF File',
+  pofVerifiedOn: 'POF Verified On',
+  dealsClosed: 'Deals Closed With Us',
+  defaults: 'Contract Defaults',
+  reliability: 'Reliability Rating'
 };
 
 var DEAL_MAP = {
@@ -86,7 +105,20 @@ var DEAL_MAP = {
   buyer: 'Buyer',
   soldPrice: 'Sold Price',
   soldDate: 'Sold Date',
-  internalNotes: 'Internal Notes'
+  internalNotes: 'Internal Notes',
+  // ---- pipeline & land ----
+  stage: 'Pipeline Stage',
+  stageUpdated: 'Stage Updated',
+  rep: 'Disposition Rep',
+  contractPrice: 'Contract Price (Seller)',
+  offerDeadline: 'Offer Deadline',
+  acres: 'Acreage',
+  parcelId: 'Parcel ID',
+  zoning: 'Zoning',
+  buyerInvestorId: 'Buyer Investor ID',
+  emdAmount: 'EMD Amount',
+  emdReceived: 'EMD Received On',
+  assignmentSigned: 'Assignment Signed On'
 };
 
 var JOB_MAP = {
@@ -120,7 +152,10 @@ var LOG_MAP = {
   queuedAt: 'Queued At',
   sentAt: 'Sent At',
   deliveredTo: 'Delivered To',
-  error: 'Error'
+  error: 'Error',
+  wave: 'Wave',
+  sendAfter: 'Send After',
+  matchScore: 'Match Score'
 };
 
 var RESPONSE_MAP = {
@@ -161,15 +196,77 @@ var INTAKE_MAP = {
 SCHEMAS[SHEET.RESPONSES] = RESPONSE_MAP;
 SCHEMAS[SHEET.INTAKE] = INTAKE_MAP;
 
+var OFFER_MAP = {
+  id: 'Offer ID',
+  dealId: 'Deal ID',
+  property: 'Property',
+  investorId: 'Investor ID',
+  investorName: 'Investor Name',
+  investorEmail: 'Investor Email',
+  received: 'Received',
+  amount: 'Offer Amount',
+  assignmentFee: 'Assignment Fee',
+  emd: 'EMD Amount',
+  inspectionDays: 'Inspection Period (days)',
+  closingDate: 'Proposed Closing Date',
+  financing: 'Financing',
+  pof: 'Proof of Funds',
+  status: 'Contract Status',
+  counter: 'Counter Amount',
+  source: 'Source',
+  notes: 'Notes',
+  updated: 'Updated',
+  responseId: 'Response ID'
+};
+SCHEMAS[SHEET.OFFERS] = OFFER_MAP;
+
+var FOLLOWUP_MAP = {
+  id: 'Follow-Up ID',
+  key: 'Rule Key',
+  type: 'Type',
+  dealId: 'Deal ID',
+  property: 'Property',
+  investorId: 'Investor ID',
+  investorName: 'Investor Name',
+  to: 'Sent To',
+  channel: 'Channel',
+  subject: 'Subject',
+  sentAt: 'Sent At',
+  status: 'Status',
+  mode: 'Mode'
+};
+SCHEMAS[SHEET.FOLLOWUPS] = FOLLOWUP_MAP;
+
 /** Columns that must be stored as plain text (zip codes, phones, IDs, dates-as-text). */
 var TEXT_COLUMNS = {};
-TEXT_COLUMNS[SHEET.INVESTORS] = ['Investor ID', 'Phone'];
-TEXT_COLUMNS[SHEET.DEALS] = ['Deal ID', 'Zip', 'Closing Date', 'Photo IDs', 'Lot Size'];
+TEXT_COLUMNS[SHEET.INVESTORS] = ['Investor ID', 'Phone', 'POF Expires', 'Preferred Zip Codes'];
+TEXT_COLUMNS[SHEET.DEALS] = ['Deal ID', 'Zip', 'Closing Date', 'Photo IDs', 'Lot Size', 'Offer Deadline', 'Parcel ID', 'Pipeline Stage'];
 TEXT_COLUMNS[SHEET.LOG] = ['Log ID', 'Job ID', 'Deal ID', 'Investor ID'];
 TEXT_COLUMNS[SHEET.RESPONSES] = ['Response ID', 'Deal ID', 'Investor ID', 'Message ID'];
 TEXT_COLUMNS[SHEET.INTAKE] = ['Intake ID', 'Investor ID', 'Reference', 'Phone'];
+TEXT_COLUMNS[SHEET.OFFERS] = ['Offer ID', 'Deal ID', 'Investor ID', 'Proposed Closing Date', 'Response ID'];
+TEXT_COLUMNS[SHEET.FOLLOWUPS] = ['Follow-Up ID', 'Rule Key', 'Deal ID', 'Investor ID'];
 
-var DEAL_STATUSES = ['Available', 'Pending', 'Sold'];
+var DEAL_STATUSES = ['Available', 'Pending', 'Sold', 'Dead'];
+
+/** Disposition pipeline. Each stage implies a deal status (Available / Pending / Sold / Dead). */
+var PIPELINE = [
+  { stage: 'Ready for Disposition', status: 'Available' },
+  { stage: 'Distributed', status: 'Available' },
+  { stage: 'Buyer Interested', status: 'Available' },
+  { stage: 'Offer Received', status: 'Available' },
+  { stage: 'Negotiating', status: 'Available' },
+  { stage: 'Buyer Selected', status: 'Pending' },
+  { stage: 'Assignment Signed', status: 'Pending' },
+  { stage: 'EMD Received', status: 'Pending' },
+  { stage: 'Closing Scheduled', status: 'Pending' },
+  { stage: 'Closed', status: 'Sold' },
+  { stage: 'Dead Deal', status: 'Dead' }
+];
+var PIPELINE_STAGES = PIPELINE.map(function (p) { return p.stage; });
+var OFFER_STATUSES = ['Received', 'Countered', 'Accepted', 'Backup', 'Under Contract', 'Closed', 'Rejected', 'Withdrawn', 'Fell Through'];
+var CONDITION_PREFS = ['Rehab', 'Turnkey', 'Either'];
+var FUNDING_TYPES = ['Cash', 'Hard money', 'Private lender', 'Conventional', 'Other'];
 var PENDING_REVIEW = 'Pending Review';
 var INVESTOR_STATUSES = ['Active', 'Inactive', PENDING_REVIEW];
 var RESPONSE_TYPES = ['Interested', 'Offer', 'Question', 'Not Interested', 'Unsubscribe', 'Reply'];
@@ -239,6 +336,20 @@ var DEFAULT_SETTINGS = [
   ['INTAKE_COUNTY_DAYS', '30', 'Only county sales recorded within this many days.'],
   ['INTAKE_COUNTY_MIN_PRICE', '20000', 'Ignore county sales below this price.'],
   ['INTAKE_COUNTY_ENTITIES_ONLY', 'TRUE', 'Only company / LLC / trust buyers (free records cannot show cash vs. financed).'],
+  // ---- matching ----
+  ['MATCH_MIN_SCORE', '50', 'Smart matching: minimum match score (0–100) for a buyer to count as a match.'],
+  ['WAVE2_DELAY_HOURS', '24', 'Priority waves: hours after Wave 1 (top-tier matches) before other matched buyers receive the deal.'],
+  ['WAVE3_DELAY_HOURS', '48', 'Priority waves: hours after Wave 1 before non-matching active buyers receive it (if included).'],
+  // ---- follow-ups ----
+  ['FU_ON', 'TRUE', 'Run automatic buyer follow-ups.'],
+  ['FU_NORESP_HOURS', '48', 'Follow up once with matched buyers who received a deal but haven\'t responded after this many hours.'],
+  ['FU_OFFER_HOURS', '24', 'Remind interested buyers to submit an offer after this many hours.'],
+  ['FU_POF_HOURS', '24', 'Ask for proof of funds this many hours after an offer arrives without verified POF.'],
+  ['FU_QUIET_DAYS', '3', 'Alert the rep when an interested buyer has gone quiet this many days.'],
+  ['FU_CLOSING_DAYS', '3', 'Remind the selected buyer and the rep this many days before closing.'],
+  ['FU_STUCK_DAYS', '7', 'Flag deals with no stage change in this many days.'],
+  ['REPS', '', 'Disposition reps (comma separated "Name <email>").'],
+  ['POF_VALID_DAYS', '90', 'Proof of funds is treated as expired after this many days.'],
   ['BUYER_FORM_ID', '', 'Managed automatically — your VIP buyer signup form.'],
   ['BUYER_FORM_URL', '', 'Managed automatically — public link to your VIP buyer signup form.']
 ];

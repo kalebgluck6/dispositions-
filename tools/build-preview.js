@@ -151,6 +151,37 @@ const seed = `
   saveSettings({ INTAKE_DM_ON: 'TRUE' });
   runBuyerIntake();
   enableDailyIntake(6, 19);
+
+  // ---- phase 1 demo: buy boxes, land deal, offers, verification, pipeline ----
+  saveSettings({ REPS: 'Jordan Hale <jordan@samedayinvestments.com>, Kim Ortiz <kim@samedayinvestments.com>', CATEGORIES: 'Fix & Flip, Buy & Hold, Cash Buyer, BRRRR, Wholesaler, Hedge Fund / Institutional, Developer, Builder, Private Lender' });
+  const byEmail = (e) => readTable_('Investors').rows.find(r => r.email === e);
+  const upd = (e, f) => { const r = byEmail(e); if (r) updateObject_('Investors', r._row, f); };
+  upd('marcus@reedcapital.com', { zips: '30030, 30032', condition: 'Rehab', funding: 'Cash', minRoi: 20, closeDays: 10 });
+  upd('tom@beckerbuilders.com', { markets: 'Suffolk, Chesapeake, Dallas-Fort Worth', zips: '23434, 23435', propertyTypes: 'Land, Multi-Family (5+)', categories: 'Developer, Builder', minAcres: 1, maxAcres: 25, funding: 'Cash', closeDays: 21, tier: 'Platinum' });
+  upd('priya@northsidehomes.com', { condition: 'Turnkey', funding: 'Hard money', closeDays: 14 });
+  ['info@midstaterentals.com', 'lee@coastalnewhomes.com', 'mbell@seaboarddev.com', 'ray@tidewaterhomebuyers.com'].forEach(e => upd(e, { status: 'Active' }));
+  upd('lee@coastalnewhomes.com', { markets: 'Elizabeth City, Suffolk', tier: 'Gold', minAcres: 0.25, maxAcres: 5 });
+  upd('mbell@seaboarddev.com', { tier: 'Platinum', markets: 'Suffolk, Chesapeake', minAcres: 1 });
+  const land = saveDeal({ address: '0 Pruden Blvd', city: 'Suffolk', state: 'VA', zip: '23434', market: 'Suffolk', propertyType: 'Land', acres: 2, lotSize: '2 acres', zoning: 'R-1', parcelId: '34-12A',
+    askingPrice: 85000, contractPrice: 60000, arv: '', description: '2-acre residential parcel off Pruden Blvd. R-1 zoning, public water at the road, perc test on file. Room for 2 homes.', closingDate: '', rep: 'Jordan Hale <jordan@samedayinvestments.com>' });
+  const oak = listDeals().find(d => d.address === '22 Oak Hollow Ln');
+  updateObject_('Deals', findBy_('Deals', 'id', oak.id)._row, { contractPrice: 118000, offerDeadline: new Date(Date.now() + 20 * 3600000), rep: 'Kim Ortiz <kim@samedayinvestments.com>' });
+  const invOf = (e) => byEmail(e);
+  verifyPof(invOf('marcus@reedcapital.com').id, 400000);
+  uploadPof(invOf('victoria@vancecap.com').id, 'statement.pdf', 'application/pdf', 'JVBERi0xLjQ=', 250000, '');
+  verifyPof(invOf('kevin@parkholdings.co').id, 2000000);
+  verifyPof(invOf('rob@ellisequity.com').id, 180000, new Date(Date.now() - 86400000).toISOString().slice(0, 10));
+  saveOffer({ dealId: oak.id, investorId: invOf('marcus@reedcapital.com').id, amount: 141000, emd: 5000, inspectionDays: 5, closingDate: new Date(Date.now() + 12 * 86400000).toISOString().slice(0, 10), financing: 'Cash' });
+  saveOffer({ dealId: oak.id, investorId: invOf('rob@ellisequity.com').id, amount: 136500, emd: 2500, inspectionDays: 10, closingDate: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10), financing: 'Cash' });
+  recordBuyerOutcome(invOf('kevin@parkholdings.co').id, 'closed', '');
+  recordBuyerOutcome(invOf('kevin@parkholdings.co').id, 'closed', '');
+  recordBuyerOutcome(invOf('rob@ellisequity.com').id, 'default', '', 'Could not fund');
+  const bay = listDeals().find(d => d.address === '410 Bay View Ct');
+  setDealStage(bay.id, 'EMD Received', { buyerInvestorId: invOf('kevin@parkholdings.co').id, emdAmount: 10000, closingDate: new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10) });
+  const mag = listDeals().find(d => d.address === '1847 Magnolia Ridge Dr');
+  updateObject_('Deals', findBy_('Deals', 'id', mag.id)._row, { stageUpdated: new Date(Date.now() - 9 * 86400000) });
+  readTable_('Responses').rows.forEach(r => updateObject_('Responses', r._row, { received: new Date(Date.now() - 4 * 86400000) }));
+  M.sent = [];
   M.sent = [];
   window.__SEEDED__ = true;
 })();`;

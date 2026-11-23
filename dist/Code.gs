@@ -24,7 +24,9 @@ var SHEET = {
   JOBS: 'Distribution Jobs',
   LOG: 'Distribution Log',
   RESPONSES: 'Responses',
-  INTAKE: 'Buyer Intake Log'
+  INTAKE: 'Buyer Intake Log',
+  OFFERS: 'Offers',
+  FOLLOWUPS: 'Follow-Ups'
 };
 
 var INVESTOR_MAP = {
@@ -52,7 +54,24 @@ var INVESTOR_MAP = {
   mailingAddress: 'Mailing Address',
   purchases: 'Recent Purchases',
   purchaseCount: 'Purchase Count',
-  lastPurchase: 'Last Purchase Date'
+  lastPurchase: 'Last Purchase Date',
+  // ---- buy box profile ----
+  zips: 'Preferred Zip Codes',
+  minAcres: 'Min Acreage',
+  maxAcres: 'Max Acreage',
+  condition: 'Rehab Preference',
+  funding: 'Funding',
+  minRoi: 'Preferred ROI %',
+  closeDays: 'Typical Close (days)',
+  lastDealBought: 'Last Deal Bought (SDI)',
+  // ---- verification ----
+  pofAmount: 'POF Amount',
+  pofExpires: 'POF Expires',
+  pofFileUrl: 'POF File',
+  pofVerifiedOn: 'POF Verified On',
+  dealsClosed: 'Deals Closed With Us',
+  defaults: 'Contract Defaults',
+  reliability: 'Reliability Rating'
 };
 
 var DEAL_MAP = {
@@ -92,7 +111,20 @@ var DEAL_MAP = {
   buyer: 'Buyer',
   soldPrice: 'Sold Price',
   soldDate: 'Sold Date',
-  internalNotes: 'Internal Notes'
+  internalNotes: 'Internal Notes',
+  // ---- pipeline & land ----
+  stage: 'Pipeline Stage',
+  stageUpdated: 'Stage Updated',
+  rep: 'Disposition Rep',
+  contractPrice: 'Contract Price (Seller)',
+  offerDeadline: 'Offer Deadline',
+  acres: 'Acreage',
+  parcelId: 'Parcel ID',
+  zoning: 'Zoning',
+  buyerInvestorId: 'Buyer Investor ID',
+  emdAmount: 'EMD Amount',
+  emdReceived: 'EMD Received On',
+  assignmentSigned: 'Assignment Signed On'
 };
 
 var JOB_MAP = {
@@ -126,7 +158,10 @@ var LOG_MAP = {
   queuedAt: 'Queued At',
   sentAt: 'Sent At',
   deliveredTo: 'Delivered To',
-  error: 'Error'
+  error: 'Error',
+  wave: 'Wave',
+  sendAfter: 'Send After',
+  matchScore: 'Match Score'
 };
 
 var RESPONSE_MAP = {
@@ -167,15 +202,77 @@ var INTAKE_MAP = {
 SCHEMAS[SHEET.RESPONSES] = RESPONSE_MAP;
 SCHEMAS[SHEET.INTAKE] = INTAKE_MAP;
 
+var OFFER_MAP = {
+  id: 'Offer ID',
+  dealId: 'Deal ID',
+  property: 'Property',
+  investorId: 'Investor ID',
+  investorName: 'Investor Name',
+  investorEmail: 'Investor Email',
+  received: 'Received',
+  amount: 'Offer Amount',
+  assignmentFee: 'Assignment Fee',
+  emd: 'EMD Amount',
+  inspectionDays: 'Inspection Period (days)',
+  closingDate: 'Proposed Closing Date',
+  financing: 'Financing',
+  pof: 'Proof of Funds',
+  status: 'Contract Status',
+  counter: 'Counter Amount',
+  source: 'Source',
+  notes: 'Notes',
+  updated: 'Updated',
+  responseId: 'Response ID'
+};
+SCHEMAS[SHEET.OFFERS] = OFFER_MAP;
+
+var FOLLOWUP_MAP = {
+  id: 'Follow-Up ID',
+  key: 'Rule Key',
+  type: 'Type',
+  dealId: 'Deal ID',
+  property: 'Property',
+  investorId: 'Investor ID',
+  investorName: 'Investor Name',
+  to: 'Sent To',
+  channel: 'Channel',
+  subject: 'Subject',
+  sentAt: 'Sent At',
+  status: 'Status',
+  mode: 'Mode'
+};
+SCHEMAS[SHEET.FOLLOWUPS] = FOLLOWUP_MAP;
+
 /** Columns that must be stored as plain text (zip codes, phones, IDs, dates-as-text). */
 var TEXT_COLUMNS = {};
-TEXT_COLUMNS[SHEET.INVESTORS] = ['Investor ID', 'Phone'];
-TEXT_COLUMNS[SHEET.DEALS] = ['Deal ID', 'Zip', 'Closing Date', 'Photo IDs', 'Lot Size'];
+TEXT_COLUMNS[SHEET.INVESTORS] = ['Investor ID', 'Phone', 'POF Expires', 'Preferred Zip Codes'];
+TEXT_COLUMNS[SHEET.DEALS] = ['Deal ID', 'Zip', 'Closing Date', 'Photo IDs', 'Lot Size', 'Offer Deadline', 'Parcel ID', 'Pipeline Stage'];
 TEXT_COLUMNS[SHEET.LOG] = ['Log ID', 'Job ID', 'Deal ID', 'Investor ID'];
 TEXT_COLUMNS[SHEET.RESPONSES] = ['Response ID', 'Deal ID', 'Investor ID', 'Message ID'];
 TEXT_COLUMNS[SHEET.INTAKE] = ['Intake ID', 'Investor ID', 'Reference', 'Phone'];
+TEXT_COLUMNS[SHEET.OFFERS] = ['Offer ID', 'Deal ID', 'Investor ID', 'Proposed Closing Date', 'Response ID'];
+TEXT_COLUMNS[SHEET.FOLLOWUPS] = ['Follow-Up ID', 'Rule Key', 'Deal ID', 'Investor ID'];
 
-var DEAL_STATUSES = ['Available', 'Pending', 'Sold'];
+var DEAL_STATUSES = ['Available', 'Pending', 'Sold', 'Dead'];
+
+/** Disposition pipeline. Each stage implies a deal status (Available / Pending / Sold / Dead). */
+var PIPELINE = [
+  { stage: 'Ready for Disposition', status: 'Available' },
+  { stage: 'Distributed', status: 'Available' },
+  { stage: 'Buyer Interested', status: 'Available' },
+  { stage: 'Offer Received', status: 'Available' },
+  { stage: 'Negotiating', status: 'Available' },
+  { stage: 'Buyer Selected', status: 'Pending' },
+  { stage: 'Assignment Signed', status: 'Pending' },
+  { stage: 'EMD Received', status: 'Pending' },
+  { stage: 'Closing Scheduled', status: 'Pending' },
+  { stage: 'Closed', status: 'Sold' },
+  { stage: 'Dead Deal', status: 'Dead' }
+];
+var PIPELINE_STAGES = PIPELINE.map(function (p) { return p.stage; });
+var OFFER_STATUSES = ['Received', 'Countered', 'Accepted', 'Backup', 'Under Contract', 'Closed', 'Rejected', 'Withdrawn', 'Fell Through'];
+var CONDITION_PREFS = ['Rehab', 'Turnkey', 'Either'];
+var FUNDING_TYPES = ['Cash', 'Hard money', 'Private lender', 'Conventional', 'Other'];
 var PENDING_REVIEW = 'Pending Review';
 var INVESTOR_STATUSES = ['Active', 'Inactive', PENDING_REVIEW];
 var RESPONSE_TYPES = ['Interested', 'Offer', 'Question', 'Not Interested', 'Unsubscribe', 'Reply'];
@@ -245,6 +342,20 @@ var DEFAULT_SETTINGS = [
   ['INTAKE_COUNTY_DAYS', '30', 'Only county sales recorded within this many days.'],
   ['INTAKE_COUNTY_MIN_PRICE', '20000', 'Ignore county sales below this price.'],
   ['INTAKE_COUNTY_ENTITIES_ONLY', 'TRUE', 'Only company / LLC / trust buyers (free records cannot show cash vs. financed).'],
+  // ---- matching ----
+  ['MATCH_MIN_SCORE', '50', 'Smart matching: minimum match score (0–100) for a buyer to count as a match.'],
+  ['WAVE2_DELAY_HOURS', '24', 'Priority waves: hours after Wave 1 (top-tier matches) before other matched buyers receive the deal.'],
+  ['WAVE3_DELAY_HOURS', '48', 'Priority waves: hours after Wave 1 before non-matching active buyers receive it (if included).'],
+  // ---- follow-ups ----
+  ['FU_ON', 'TRUE', 'Run automatic buyer follow-ups.'],
+  ['FU_NORESP_HOURS', '48', 'Follow up once with matched buyers who received a deal but haven\'t responded after this many hours.'],
+  ['FU_OFFER_HOURS', '24', 'Remind interested buyers to submit an offer after this many hours.'],
+  ['FU_POF_HOURS', '24', 'Ask for proof of funds this many hours after an offer arrives without verified POF.'],
+  ['FU_QUIET_DAYS', '3', 'Alert the rep when an interested buyer has gone quiet this many days.'],
+  ['FU_CLOSING_DAYS', '3', 'Remind the selected buyer and the rep this many days before closing.'],
+  ['FU_STUCK_DAYS', '7', 'Flag deals with no stage change in this many days.'],
+  ['REPS', '', 'Disposition reps (comma separated "Name <email>").'],
+  ['POF_VALID_DAYS', '90', 'Proof of funds is treated as expired after this many days.'],
   ['BUYER_FORM_ID', '', 'Managed automatically — your VIP buyer signup form.'],
   ['BUYER_FORM_URL', '', 'Managed automatically — public link to your VIP buyer signup form.']
 ];
@@ -434,6 +545,14 @@ function num_(v) {
   if (/k/i.test(m[2])) n *= 1000;
   if (/m/i.test(m[2])) n *= 1000000;
   return n;
+}
+
+/** Date (with time) from a Date or date string; null if empty/invalid. */
+function asDate_(v) {
+  if (!v) return null;
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+  var d = new Date(v);
+  return isNaN(d.getTime()) ? null : d;
 }
 
 function bool_(v) {
@@ -684,6 +803,14 @@ function normalizeInvestor_(inv) {
   };
   // Only touch these when the caller sends them (the edit form doesn't send purchase history)
   if (inv.mailingAddress !== undefined) out.mailingAddress = str_(inv.mailingAddress);
+  // buy box profile (only when sent)
+  if (inv.zips !== undefined) out.zips = list_(inv.zips).map(function (z) { return z.replace(/[^\d-]/g, ''); }).filter(String).join(', ');
+  if (inv.minAcres !== undefined) out.minAcres = num_(inv.minAcres);
+  if (inv.maxAcres !== undefined) out.maxAcres = num_(inv.maxAcres);
+  if (inv.condition !== undefined) out.condition = CONDITION_PREFS.indexOf(str_(inv.condition)) > -1 ? str_(inv.condition) : '';
+  if (inv.funding !== undefined) out.funding = str_(inv.funding);
+  if (inv.minRoi !== undefined) out.minRoi = num_(inv.minRoi);
+  if (inv.closeDays !== undefined) out.closeDays = num_(inv.closeDays);
   return out;
 }
 
@@ -697,6 +824,12 @@ function cleanInvestorRow_(r) {
   o.optOut = bool_(r.optOut);
   o.dealsReceived = Number(r.dealsReceived) || 0;
   o.status = str_(r.status) || 'Active';
+  o.pofStatus = pofStatus_(r);
+  o.flags = buyerFlags_(r);
+  o.reliabilityScore = reliabilityOf_(r);
+  o.dealsClosed = Number(r.dealsClosed) || 0;
+  o.defaults = Number(r.defaults) || 0;
+  o.pofExpires = r.pofExpires instanceof Date ? fmtDate_(r.pofExpires) : str_(r.pofExpires);
   return o;
 }
 
@@ -1019,7 +1152,41 @@ function cleanDealRow_(r) {
   o.title = dealTitle_(r);
   o.metrics = dealMetrics_(r);
   o.closingDate = r.closingDate instanceof Date ? fmtDate_(r.closingDate) : str_(r.closingDate);
+  o.offerDeadline = r.offerDeadline instanceof Date ? fmtDate_(r.offerDeadline, "yyyy-MM-dd'T'HH:mm") : str_(r.offerDeadline);
+  o.stage = stageOf_(r);
+  o.stageIndex = PIPELINE_STAGES.indexOf(o.stage);
+  var since = parseDateLoose_(r.stageUpdated) || parseDateLoose_(r.updated) || parseDateLoose_(r.created);
+  o.daysInStage = since ? Math.floor((Date.now() - since.getTime()) / 86400000) : 0;
+  o.stuck = ['Closed', 'Dead Deal'].indexOf(o.stage) === -1 && o.daysInStage >= (parseInt(getSettings_().FU_STUCK_DAYS, 10) || 7);
+  o.acresNum = dealAcres_(r);
+  o.isLand = isLandDeal_(r);
   return o;
+}
+
+/** The deal's pipeline stage (derived for deals created before the pipeline existed). */
+function stageOf_(d) {
+  var st = str_(d.stage);
+  if (PIPELINE_STAGES.indexOf(st) > -1) return st;
+  var status = str_(d.status);
+  if (status === 'Sold') return 'Closed';
+  if (status === 'Dead') return 'Dead Deal';
+  if (status === 'Pending') return 'Buyer Selected';
+  return Number(d.timesDistributed) > 0 ? 'Distributed' : 'Ready for Disposition';
+}
+
+function statusForStage_(stage) {
+  var p = PIPELINE.filter(function (x) { return x.stage === stage; })[0];
+  return p ? p.status : 'Available';
+}
+
+/** Moves a deal forward to `stage` only if it's currently at an earlier (active) stage. Caller holds the lock. */
+function advanceStage_(dealId, stage) {
+  var d = findBy_(SHEET.DEALS, 'id', dealId);
+  if (!d) return;
+  var cur = stageOf_(d);
+  if (['Closed', 'Dead Deal'].indexOf(cur) > -1) return;
+  if (PIPELINE_STAGES.indexOf(stage) <= PIPELINE_STAGES.indexOf(cur)) return;
+  updateObject_(SHEET.DEALS, d._row, { stage: stage, stageUpdated: new Date(), status: statusForStage_(stage), updated: new Date() });
 }
 
 function getDealRow_(dealId) {
@@ -1055,7 +1222,13 @@ function normalizeDeal_(deal) {
     access: str_(deal.access),
     showAccess: deal.showAccess === undefined ? true : bool_(deal.showAccess),
     videoUrl: str_(deal.videoUrl),
-    internalNotes: str_(deal.internalNotes)
+    internalNotes: str_(deal.internalNotes),
+    acres: num_(deal.acres),
+    parcelId: str_(deal.parcelId),
+    zoning: str_(deal.zoning),
+    contractPrice: num_(deal.contractPrice),
+    offerDeadline: str_(deal.offerDeadline).replace('T', ' '),
+    rep: str_(deal.rep)
   };
 }
 
@@ -1124,6 +1297,8 @@ function saveDeal(deal) {
     } else {
       data.id = nextId_('DEAL_SEQ_' + new Date().getFullYear(), 'SDI-' + new Date().getFullYear() + '-', 4);
       data.status = 'Available';
+      data.stage = 'Ready for Disposition';
+      data.stageUpdated = new Date();
       data.created = new Date();
       data.timesDistributed = 0;
       data.totalRecipients = 0;
@@ -1152,9 +1327,66 @@ function setDealStatus(dealId, status, extra) {
     } else {
       f.soldDate = '';
     }
+    var cur = stageOf_(d);
+    var target = { Sold: 'Closed', Dead: 'Dead Deal', Pending: PIPELINE_STAGES.indexOf(cur) >= 5 && PIPELINE_STAGES.indexOf(cur) <= 8 ? cur : 'Buyer Selected' }[status];
+    if (status === 'Available') target = PIPELINE_STAGES.indexOf(cur) <= 4 ? cur : (Number(d.timesDistributed) > 0 ? 'Negotiating' : 'Ready for Disposition');
+    if (target !== cur) { f.stage = target; f.stageUpdated = new Date(); }
     updateObject_(SHEET.DEALS, d._row, f);
     return getDeal(dealId);
   });
+}
+
+/**
+ * Sets the pipeline stage. extra: { buyerInvestorId, buyer, soldPrice, emdAmount, closingDate }
+ * Closed records a completed transaction for the buyer; Dead Deal stops distribution.
+ */
+function setDealStage(dealId, stage, extra) {
+  if (PIPELINE_STAGES.indexOf(stage) === -1) throw new Error('Unknown stage ' + stage);
+  extra = extra || {};
+  return withLock_(function () {
+    var d = getDealRow_(dealId);
+    var f = { stage: stage, stageUpdated: new Date(), status: statusForStage_(stage), updated: new Date() };
+    if (extra.buyerInvestorId !== undefined) {
+      f.buyerInvestorId = str_(extra.buyerInvestorId);
+      var inv = f.buyerInvestorId ? findBy_(SHEET.INVESTORS, 'id', f.buyerInvestorId) : null;
+      if (inv) f.buyer = investorName_(inv) + (inv.company && investorName_(inv) !== inv.company ? ' (' + inv.company + ')' : '');
+    }
+    if (extra.buyer !== undefined && !f.buyer) f.buyer = str_(extra.buyer);
+    if (extra.emdAmount !== undefined) f.emdAmount = num_(extra.emdAmount);
+    if (extra.closingDate) f.closingDate = str_(extra.closingDate);
+    if (stage === 'Assignment Signed' && !d.assignmentSigned) f.assignmentSigned = new Date();
+    if (stage === 'EMD Received' && !d.emdReceived) f.emdReceived = new Date();
+    if (stage === 'Closed') {
+      f.soldDate = new Date();
+      if (extra.soldPrice !== undefined) f.soldPrice = num_(extra.soldPrice);
+      var buyerId = f.buyerInvestorId || str_(d.buyerInvestorId);
+      if (buyerId && stageOf_(d) !== 'Closed') {
+        recordBuyerOutcome_(buyerId, 'closed', dealId);
+        readTable_(SHEET.OFFERS).rows.forEach(function (o) {
+          if (o.dealId === dealId && o.investorId === buyerId && ['Accepted', 'Under Contract'].indexOf(o.status) > -1) {
+            updateObject_(SHEET.OFFERS, o._row, { status: 'Closed', updated: new Date() });
+            if (!f.soldPrice && !d.soldPrice) f.soldPrice = num_(o.amount);
+          }
+        });
+      }
+    }
+    updateObject_(SHEET.DEALS, d._row, f);
+    return getDeal(dealId);
+  });
+}
+
+/** Board data: every deal with stage, days in stage, offers and the selected buyer. */
+function getPipeline() {
+  var offers = {};
+  readTable_(SHEET.OFFERS).rows.forEach(function (o) {
+    var x = offers[o.dealId] || (offers[o.dealId] = { count: 0, best: 0, active: 0 });
+    x.count++;
+    if (['Rejected', 'Withdrawn', 'Fell Through'].indexOf(o.status) === -1) { x.active++; x.best = Math.max(x.best, Number(o.amount) || 0); }
+  });
+  return {
+    stages: PIPELINE,
+    deals: listDeals().map(function (d) { d.offers = offers[d.id] || { count: 0, best: 0, active: 0 }; return d; })
+  };
 }
 
 /** Uploads one photo (base64, already resized in the browser). */
@@ -1654,7 +1886,20 @@ function resolveAudience_(deal, audience, investors, logRows) {
       if (l.dealId === deal.id && l.mode === 'LIVE' && l.status === 'Sent') already[l.investorId] = true;
     });
   }
-  var ex = { inactive: 0, optedOut: 0, invalidEmail: 0, duplicate: 0, notInSegment: 0, criteria: 0, alreadySent: 0 };
+  var ex = { inactive: 0, optedOut: 0, invalidEmail: 0, duplicate: 0, notInSegment: 0, criteria: 0, alreadySent: 0, notMatched: 0 };
+  var smart = null;
+  if (mode === 'smart') {
+    smart = {};
+    var minScore = Number(audience.minScore) || parseInt(getSettings_().MATCH_MIN_SCORE, 10) || 50;
+    var ctxM = matchContext_(deal.id);
+    investors.forEach(function (inv) {
+      var m = matchInvestor_(inv, deal, ctxM);
+      m.matched = !m.blockers.length && m.score >= minScore;
+      smart[inv.id] = m;
+    });
+    var topRank = 99;
+    investors.forEach(function (inv) { if (smart[inv.id].matched && smart[inv.id].tierRank < topRank) topRank = smart[inv.id].tierRank; });
+  }
   var seen = {};
   var included = [];
   investors.forEach(function (inv) {
@@ -1670,17 +1915,30 @@ function resolveAudience_(deal, audience, investors, logRows) {
       if (mkts.length && !overlap_(list_(inv.markets), mkts)) { ex.notInSegment++; return; }
     }
     if (audience.matchCriteria && !matchesCriteria_(inv, deal)) { ex.criteria++; return; }
+    var wave = 1, score = '';
+    if (smart) {
+      var m = smart[inv.id];
+      score = m.score;
+      if (!m.matched) {
+        if (!audience.includeOthers) { ex.notMatched++; return; }
+        wave = 3;
+      } else wave = audience.waves === false || m.tierRank === topRank ? 1 : 2;
+    }
     if (already[inv.id]) { ex.alreadySent++; return; }
     seen[email] = true;
+    inv._wave = wave; inv._score = score;
     included.push(inv);
   });
+  // highest priority first: wave, then match score, then tier
+  included.sort(function (a, b) { return (a._wave - b._wave) || ((Number(b._score) || 0) - (Number(a._score) || 0)) || (tierRank_(a.tier) - tierRank_(b.tier)); });
   return { included: included, excluded: ex };
 }
 
 function describeAudience_(a) {
   a = a || {};
   var parts = [];
-  if (a.mode === 'selected') parts.push('Hand-picked (' + (a.investorIds || []).length + ')');
+  if (a.mode === 'smart') parts.push('Smart match ≥ ' + (Number(a.minScore) || parseInt(getSettings_().MATCH_MIN_SCORE, 10) || 50) + (a.waves === false ? '' : ', priority waves') + (a.includeOthers ? ' + all other active buyers last' : ''));
+  else if (a.mode === 'selected') parts.push('Hand-picked (' + (a.investorIds || []).length + ')');
   else if (a.mode === 'segments') {
     if (list_(a.tiers).length) parts.push('Tiers: ' + list_(a.tiers).join('/'));
     if (list_(a.categories).length) parts.push('Categories: ' + list_(a.categories).join('/'));
@@ -1707,8 +1965,9 @@ function previewAudience(dealId, audience) {
     count: res.included.length,
     excluded: res.excluded,
     recipients: res.included.map(function (i) {
-      return { id: i.id, name: investorName_(i), email: str_(i.email), tier: str_(i.tier), categories: str_(i.categories) };
+      return { id: i.id, name: investorName_(i), email: str_(i.email), tier: str_(i.tier), categories: str_(i.categories), wave: i._wave, score: i._score };
     }),
+    waves: [1, 2, 3].map(function (w) { return res.included.filter(function (i) { return i._wave === w; }).length; }),
     testMode: isTestMode_(),
     quota: remainingQuota_()
   };
@@ -1736,6 +1995,7 @@ function sendTestEmail(dealId, toEmail) {
 function prepareDistribution(dealId, audience) {
   var deal = getDealRow_(dealId);
   if (str_(deal.status) === 'Sold') throw new Error('This deal is marked SOLD. Change its status before distributing.');
+  if (str_(deal.status) === 'Dead') throw new Error('This deal is marked DEAD. Change its status before distributing.');
   var settings = getSettings_();
   var res = resolveAudience_(deal, audience, readTable_(SHEET.INVESTORS).rows, readTable_(SHEET.LOG).rows);
   if (!res.included.length) throw new Error('No investors match this audience.');
@@ -1745,6 +2005,8 @@ function prepareDistribution(dealId, audience) {
     dealId: dealId,
     audience: audience || { mode: 'all' },
     ids: res.included.map(function (i) { return i.id; }),
+    waves: res.included.map(function (i) { return i._wave || 1; }),
+    scores: res.included.map(function (i) { return i._score === undefined ? '' : i._score; }),
     mode: testMode ? 'TEST' : 'LIVE',
     user: currentUser_()
   };
@@ -1762,7 +2024,9 @@ function prepareDistribution(dealId, audience) {
     testEmail: str_(settings.TEST_EMAIL),
     testDeliveries: testMode ? Math.min(testMax, res.included.length) : 0,
     quota: remainingQuota_(),
-    previouslySent: Number(deal.timesDistributed) || 0
+    previouslySent: Number(deal.timesDistributed) || 0,
+    waves: [1, 2, 3].map(function (w) { return res.included.filter(function (i) { return (i._wave || 1) === w; }).length; }),
+    waveDelays: [0, Number(getSettings_().WAVE2_DELAY_HOURS) || 24, Number(getSettings_().WAVE3_DELAY_HOURS) || 48]
   };
 }
 
@@ -1791,12 +2055,16 @@ function confirmDistribution(token, typed) {
     var id = 'JOB-' + fmtDate_(new Date(), 'yyyyMMdd-HHmmss') + '-' + Utilities.getUuid().slice(0, 4).toUpperCase();
     var now = new Date();
     var rows = [];
+    var delays = [0, Number(settings.WAVE2_DELAY_HOURS) || 24, Number(settings.WAVE3_DELAY_HOURS) || 48];
     p.ids.forEach(function (invId, n) {
       var inv = byId[invId];
       if (!inv) return;
       var status = 'Queued';
       if (p.mode === 'TEST' && n >= testMax) status = 'Simulated';
+      var wave = (p.waves && p.waves[n]) || 1;
+      var after = wave > 1 && p.mode === 'LIVE' ? new Date(now.getTime() + delays[wave - 1] * 3600000) : '';
       rows.push({
+        wave: wave, sendAfter: after, matchScore: p.scores ? p.scores[n] : '',
         id: shortId_('L-'), jobId: id, dealId: p.dealId, investorId: inv.id, investorName: investorName_(inv),
         investorEmail: lc_(inv.email), tier: str_(inv.tier), mode: p.mode, status: status, queuedAt: now,
         sentAt: '', deliveredTo: '', error: ''
@@ -1861,7 +2129,10 @@ function processQueueSafely_(jobId) {
     _lockDepth = 0;
     lock.releaseLock();
   }
-  if (res && res.remaining > 0) scheduleQueue_(res.quotaExhausted ? 60 * 60 * 1000 : 60 * 1000);
+  if (res && res.remaining > 0) {
+    var wait = res.quotaExhausted ? 60 * 60 * 1000 : res.dueRemaining ? 60 * 1000 : Math.max(60 * 1000, Math.min(res.nextDueMs || 0, 6 * 3600 * 1000));
+    scheduleQueue_(wait);
+  }
 }
 
 function scheduleQueue_(ms) {
@@ -1877,10 +2148,14 @@ function processQueue_(onlyJobId, budgetMs) {
   var started = Date.now();
   var settings = getSettings_();
   var log = readTable_(SHEET.LOG);
-  var queued = log.rows.filter(function (l) { return l.status === 'Queued' && (!onlyJobId || l.jobId === onlyJobId); });
+  var nowMs = Date.now();
+  var allQueued = log.rows.filter(function (l) { return l.status === 'Queued' && (!onlyJobId || l.jobId === onlyJobId); });
+  var future = allQueued.filter(function (l) { var t = asDate_(l.sendAfter); return t && t.getTime() > nowMs; });
+  var queued = allQueued.filter(function (l) { return future.indexOf(l) === -1; });
+  var nextDue = future.reduce(function (m, l) { var t = asDate_(l.sendAfter).getTime(); return Math.min(m, t); }, Infinity);
   if (!queued.length) {
     if (onlyJobId) refreshJob_(onlyJobId);
-    return { remaining: 0, sent: 0 };
+    return { remaining: future.length, sent: 0, nextDueMs: future.length ? nextDue - nowMs : 0 };
   }
   var quota = remainingQuota_();
   if (quota < 0) quota = 1e9; // quota unavailable — let Gmail enforce it
@@ -1938,7 +2213,7 @@ function processQueue_(onlyJobId, budgetMs) {
   Object.keys(jobIds).forEach(function (j) { refreshJob_(j, quotaExhausted); });
 
   var remaining = queued.filter(function (q) { return q.status === 'Queued'; }).length;
-  return { remaining: remaining, sent: processed, quotaExhausted: quotaExhausted };
+  return { remaining: remaining + future.length, dueRemaining: remaining, sent: processed, quotaExhausted: quotaExhausted, nextDueMs: future.length ? nextDue - nowMs : 0 };
 }
 
 function flushLog_(log, touched) {
@@ -2012,7 +2287,11 @@ function refreshJob_(jobId, quotaExhausted) {
   var c = { Sent: 0, Failed: 0, Simulated: 0, Queued: 0, Skipped: 0, Cancelled: 0 };
   rows.forEach(function (r) { c[r.status] = (c[r.status] || 0) + 1; });
   var status;
-  if (c.Queued > 0) status = quotaExhausted ? 'Paused — daily email limit (resumes automatically)' : 'Sending';
+  var waiting = rows.filter(function (r) { var t = asDate_(r.sendAfter); return r.status === 'Queued' && t && t.getTime() > Date.now(); });
+  if (c.Queued > 0 && waiting.length === c.Queued) {
+    var nxt = waiting.reduce(function (m, r) { return Math.min(m, asDate_(r.sendAfter).getTime()); }, Infinity);
+    status = 'Wave ' + waiting[0].wave + ' scheduled — ' + waiting.length + ' buyers at ' + fmtDate_(new Date(nxt), 'MMM d h:mm a');
+  } else if (c.Queued > 0) status = quotaExhausted ? 'Paused — daily email limit (resumes automatically)' : 'Sending';
   else if (c.Cancelled > 0) status = 'Cancelled';
   else if (c.Failed > 0) status = 'Completed with errors';
   else status = 'Completed';
@@ -2031,6 +2310,7 @@ function refreshJob_(jobId, quotaExhausted) {
       if (c.Sent > 0) df.lastDistributed = new Date();
       if (c.Queued === 0 && !wasDone && c.Sent > 0) df.timesDistributed = (Number(deal.timesDistributed) || 0) + 1;
       updateObject_(SHEET.DEALS, deal._row, df);
+      if (c.Sent > 0) advanceStage_(job.dealId, 'Distributed');
     }
   }
 }
@@ -2200,12 +2480,18 @@ function scanInboxForResponses() {
     });
 
     appendObjects_(SHEET.RESPONSES, newRows);
+    var offersCreated = 0;
+    newRows.forEach(function (r) {
+      if (!r.dealId) return;
+      if (r.type === 'Offer' && createOfferFromResponse_(r)) offersCreated++;
+      if (r.type === 'Interested' || r.type === 'Offer') advanceStage_(r.dealId, 'Buyer Interested');
+    });
     optOuts.forEach(function (inv) {
       updateObject_(SHEET.INVESTORS, inv._row, { optOut: true, updated: new Date(), notes: (str_(inv.notes) + ' [Unsubscribed by email ' + fmtDate_(new Date()) + ']').trim() });
     });
     Object.keys(touchedDeals).forEach(recountDeal_);
     setSetting_('LAST_INBOX_SCAN', new Date().toISOString());
-    return { found: newRows.length, unsubscribed: optOuts.length, scannedAt: new Date().toISOString() };
+    return { found: newRows.length, unsubscribed: optOuts.length, offers: offersCreated, scannedAt: new Date().toISOString() };
   });
 }
 
@@ -2231,6 +2517,8 @@ function logResponse(r) {
     };
     appendObjects_(SHEET.RESPONSES, [row]);
     if (type === 'Unsubscribe' && inv) updateObject_(SHEET.INVESTORS, inv._row, { optOut: true, updated: new Date() });
+    if (type === 'Interested' || type === 'Offer') advanceStage_(deal.id, 'Buyer Interested');
+    if (type === 'Offer') createOfferFromResponse_(row);
     recountDeal_(deal.id);
     return toClient_(row);
   });
@@ -2294,6 +2582,7 @@ function onOpen() {
     .addItem('Scan inbox for investor replies now', 'scanInboxForResponses')
     .addItem('Resume queued distributions', 'runQueuedDistributions')
     .addItem('Find new buyers now', 'runBuyerIntake')
+    .addItem('Run buyer follow-ups now', 'runFollowUpsNow')
     .addToUi();
 }
 
@@ -2321,7 +2610,7 @@ function setup() {
   if (ss) props.setProperty('SPREADSHEET_ID', ss.getId());
   _ss = null;
   ensureSettings_();
-  [SHEET.INVESTORS, SHEET.DEALS, SHEET.JOBS, SHEET.LOG, SHEET.RESPONSES, SHEET.INTAKE].forEach(function (n) { getSheet_(n); });
+  [SHEET.INVESTORS, SHEET.DEALS, SHEET.JOBS, SHEET.LOG, SHEET.RESPONSES, SHEET.INTAKE, SHEET.OFFERS, SHEET.FOLLOWUPS].forEach(function (n) { getSheet_(n); });
   var book = ss_();
   var blank = book.getSheetByName('Sheet1');
   if (blank && blank.getLastRow() === 0 && book.getSheets().length > 1) book.deleteSheet(blank);
@@ -2376,6 +2665,291 @@ function getDashboard() {
     quota: remainingQuota_(),
     lastScan: getSettings_().LAST_INBOX_SCAN || ''
   });
+}
+
+
+// ================= FollowUps.gs =================
+/**
+ * FollowUps.gs — Automatic Buyer Follow-Ups.
+ *
+ * Runs every 2 hours during business hours (8 AM–8 PM). Each rule fires once per buyer/deal
+ * (tracked in the "Follow-Ups" sheet) so nobody gets spammed:
+ *   Buyer emails
+ *     noresp   — matched buyer received the deal, no response after FU_NORESP_HOURS
+ *     offer    — buyer said Interested, no offer after FU_OFFER_HOURS
+ *     pof      — offer without verified proof of funds (up to 3 reminders, 48h apart)
+ *     deadline — offer deadline within 24h, interested buyers without an offer
+ *     emd      — buyer selected 2+ days ago, EMD not received
+ *     closing  — closing within FU_CLOSING_DAYS
+ *   Rep alerts (one digest email per rep)
+ *     quiet    — interested buyer / selected buyer silent FU_QUIET_DAYS
+ *     stuck    — deal unchanged in its stage FU_STUCK_DAYS
+ *     closing / emd — heads-up for the rep
+ * Opted-out buyers are never emailed. In TEST mode buyer emails go to TEST_EMAIL.
+ */
+
+var FU_TYPES = {
+  noresp: 'No response',
+  offer: 'Offer reminder',
+  pof: 'Proof of funds',
+  deadline: 'Offer deadline',
+  emd: 'EMD reminder',
+  closing: 'Closing reminder',
+  quiet: 'Buyer went quiet',
+  stuck: 'Deal stuck'
+};
+
+function hoursSince_(v) { var d = asDate_(v); return d ? (Date.now() - d.getTime()) / 3600000 : Infinity; }
+
+function repEmail_(deal) {
+  var r = str_(deal && deal.rep);
+  var m = r.match(/<([^>]+)>/);
+  var e = m ? m[1] : r;
+  if (isEmail_(e)) return lc_(e);
+  var reps = list_(getSettings_().REPS);
+  var hit = reps.filter(function (x) { return lc_(x).indexOf(lc_(r)) === 0 && r; })[0];
+  if (hit) { var mm = hit.match(/<([^>]+)>/); if (mm && isEmail_(mm[1])) return lc_(mm[1]); }
+  return replyTo_();
+}
+
+/** Works out every follow-up that is due right now (nothing is sent here). */
+function planFollowUps_() {
+  var s = getSettings_();
+  var H = function (k, d) { var n = Number(s[k]); return isNaN(n) || s[k] === '' ? d : n; };
+  var sent = {};
+  readTable_(SHEET.FOLLOWUPS).rows.forEach(function (f) {
+    if (f.status === 'Sent' || f.status === 'Test') sent[f.key] = f;
+  });
+  var invById = {};
+  readTable_(SHEET.INVESTORS).rows.forEach(function (i) { invById[i.id] = i; });
+  var deals = readTable_(SHEET.DEALS).rows.map(function (d) { var c = cleanDealRow_(d); c._raw = d; return c; });
+  var respBy = {}, offerBy = {}, sentBy = {};
+  readTable_(SHEET.RESPONSES).rows.forEach(function (r) { if (r.dealId && r.investorId) (respBy[r.dealId + '|' + r.investorId] = respBy[r.dealId + '|' + r.investorId] || []).push(r); });
+  var offers = readTable_(SHEET.OFFERS).rows;
+  offers.forEach(function (o) { if (o.investorId) (offerBy[o.dealId + '|' + o.investorId] = offerBy[o.dealId + '|' + o.investorId] || []).push(o); });
+  readTable_(SHEET.LOG).rows.forEach(function (l) { if (l.mode === 'LIVE' && l.status === 'Sent') sentBy[l.dealId + '|' + l.investorId] = l; });
+  var minScore = parseInt(s.MATCH_MIN_SCORE, 10) || 50;
+  var plan = [];
+  var canEmail = function (inv) { return inv && (str_(inv.status) || 'Active') === 'Active' && !bool_(inv.optOut) && isEmail_(inv.email); };
+  var add = function (key, type, deal, inv, kind, detail) {
+    if (sent[key]) return;
+    plan.push({ key: key, type: type, kind: kind, dealId: deal.id, property: deal.title, investorId: inv ? inv.id : '', investorName: inv ? investorName_(inv) : '', to: kind === 'buyer' ? lc_(inv.email) : repEmail_(deal), detail: detail || '' });
+  };
+
+  deals.forEach(function (d) {
+    if (['Closed', 'Dead Deal'].indexOf(d.stage) > -1) return;
+    var idx = d.stageIndex;
+    var ctxM = null;
+
+    // noresp — matched buyers who got it but never responded
+    if (d.status === 'Available' && idx >= 1 && idx <= 4) {
+      Object.keys(sentBy).forEach(function (k) {
+        if (k.indexOf(d.id + '|') !== 0) return;
+        var l = sentBy[k], inv = invById[l.investorId];
+        if (!canEmail(inv) || respBy[k] || offerBy[k]) return;
+        if (hoursSince_(l.sentAt) < H('FU_NORESP_HOURS', 48)) return;
+        ctxM = ctxM || matchContext_(d.id);
+        var m = matchInvestor_(inv, d._raw, ctxM);
+        if (m.blockers.length || m.score < minScore) return;
+        add('noresp|' + d.id + '|' + inv.id, 'noresp', d, inv, 'buyer', 'Match ' + m.score + ' · sent ' + fmtDate_(asDate_(l.sentAt), 'MMM d'));
+      });
+    }
+
+    // offer reminders + offer deadline
+    var deadline = asDate_(d.offerDeadline);
+    Object.keys(respBy).forEach(function (k) {
+      if (k.indexOf(d.id + '|') !== 0 || d.status !== 'Available') return;
+      var inv = invById[k.split('|')[1]];
+      var interested = respBy[k].filter(function (r) { return r.type === 'Interested'; });
+      if (!interested.length || offerBy[k] || !canEmail(inv)) return;
+      if (hoursSince_(interested[interested.length - 1].received) >= H('FU_OFFER_HOURS', 24)) add('offer|' + d.id + '|' + inv.id, 'offer', d, inv, 'buyer', 'Interested ' + fmtDate_(asDate_(interested[0].received), 'MMM d'));
+      if (deadline && deadline.getTime() > Date.now() && deadline.getTime() - Date.now() <= 24 * 3600000) add('deadline|' + d.id + '|' + inv.id, 'deadline', d, inv, 'buyer', 'Deadline ' + fmtDate_(deadline, 'MMM d h:mm a'));
+    });
+
+    // quiet buyers → rep alert
+    var engaged = {};
+    Object.keys(respBy).forEach(function (k) { if (k.indexOf(d.id + '|') === 0 && respBy[k].some(function (r) { return r.type === 'Interested' || r.type === 'Offer'; })) engaged[k] = true; });
+    Object.keys(offerBy).forEach(function (k) { if (k.indexOf(d.id + '|') === 0 && offerBy[k].some(function (o) { return ACTIVE_OFFER.indexOf(o.status) > -1; })) engaged[k] = true; });
+    if (d.buyerInvestorId) engaged[d.id + '|' + d.buyerInvestorId] = true;
+    Object.keys(engaged).forEach(function (k) {
+      var inv = invById[k.split('|')[1]];
+      if (!inv) return;
+      var last = 0;
+      (respBy[k] || []).forEach(function (r) { var t = asDate_(r.received); if (t) last = Math.max(last, t.getTime()); });
+      (offerBy[k] || []).forEach(function (o) { [o.received, o.updated].forEach(function (v) { var t = asDate_(v); if (t) last = Math.max(last, t.getTime()); }); });
+      if (!last) return;
+      var days = (Date.now() - last) / 86400000;
+      if (days >= H('FU_QUIET_DAYS', 3)) add('quiet|' + d.id + '|' + inv.id + '|' + fmtDate_(new Date(last)), 'quiet', d, inv, 'rep', investorName_(inv) + ' silent ' + Math.floor(days) + ' days');
+    });
+
+    // EMD + closing
+    if (idx >= 5 && idx <= 8) {
+      var buyer = invById[str_(d.buyerInvestorId)];
+      if (idx <= 6 && !d.emdReceived && hoursSince_(d._raw.stageUpdated) >= 48) {
+        if (canEmail(buyer)) add('emd|' + d.id, 'emd', d, buyer, 'buyer', 'EMD ' + (d.emdAmount ? money_(d.emdAmount) : '') + ' not received');
+        add('emdrep|' + d.id, 'emd', d, buyer, 'rep', 'EMD not received from ' + (buyer ? investorName_(buyer) : d.buyer || 'buyer'));
+      }
+      var close = parseDateLoose_(d.closingDate);
+      if (close) {
+        var daysTo = (close.getTime() - Date.now()) / 86400000;
+        if (daysTo >= -1 && daysTo <= H('FU_CLOSING_DAYS', 3)) {
+          if (canEmail(buyer)) add('closing|' + d.id + '|' + d.closingDate, 'closing', d, buyer, 'buyer', 'Closing ' + prettyDate_(d.closingDate));
+          add('closingrep|' + d.id + '|' + d.closingDate, 'closing', d, buyer, 'rep', 'Closing ' + prettyDate_(d.closingDate) + (buyer ? ' with ' + investorName_(buyer) : ''));
+        }
+      }
+    }
+
+    // stuck deals → rep
+    if (d.stuck) add('stuck|' + d.id + '|' + fmtDate_(asDate_(d._raw.stageUpdated) || asDate_(d._raw.updated) || new Date()), 'stuck', d, null, 'rep', d.stage + ' for ' + d.daysInStage + ' days');
+  });
+
+  // proof of funds (per offer, up to 3 reminders 48h apart)
+  offers.forEach(function (o) {
+    if (['Received', 'Countered', 'Accepted', 'Under Contract'].indexOf(o.status) === -1) return;
+    var inv = invById[o.investorId];
+    if (!canEmail(inv)) return;
+    var pof = pofStatus_(inv);
+    if (pof === 'Verified' || pof === 'Expiring') return;
+    if (hoursSince_(o.received) < H('FU_POF_HOURS', 24)) return;
+    var prior = Object.keys(sent).filter(function (k) { return k.indexOf('pof|' + o.id + '|') === 0; }).map(function (k) { return sent[k]; });
+    if (prior.length >= 3) return;
+    if (prior.some(function (p) { return hoursSince_(p.sentAt) < 48; })) return;
+    var d = deals.filter(function (x) { return x.id === o.dealId; })[0];
+    if (!d || ['Closed', 'Dead Deal'].indexOf(d.stage) > -1) return;
+    add('pof|' + o.id + '|' + (prior.length + 1), 'pof', d, inv, 'buyer', 'Offer ' + money_(o.amount) + ' · POF ' + pof);
+  });
+  return plan;
+}
+
+function fuEmail_(type, deal, inv, settings) {
+  var B = BRAND, company = str_(settings.COMPANY_NAME) || APP_NAME, reply = replyTo_();
+  var first = str_(inv && inv.firstName) || 'there';
+  var title = deal.title || dealTitle_(deal);
+  var price = money_(deal.askingPrice);
+  var deadline = asDate_(deal.offerDeadline);
+  var copy = {
+    noresp: ['Still available: ' + title, 'Checking in on ' + title + ' (' + price + (deal.arv ? ', ARV ' + money_(deal.arv) : '') + '). It fits what you buy and it\'s still available. Want to take a look or make an offer?'],
+    offer: ['Ready to make an offer on ' + title + '?', 'Thanks for your interest in ' + title + '. If it works for you, send your offer and we\'ll lock it up.' + (deadline ? ' Offers are due ' + fmtDate_(deadline, 'EEEE, MMM d \'at\' h:mm a') + '.' : '')],
+    deadline: ['Offer deadline approaching: ' + title, 'Offers on ' + title + ' are due ' + (deadline ? fmtDate_(deadline, 'EEEE, MMM d \'at\' h:mm a') : 'soon') + '. If you want it, get your offer in now.'],
+    pof: ['Proof of funds needed: ' + title, 'We received your offer on ' + title + ' — thank you. To keep it in consideration, please reply with proof of funds (bank statement or lender letter dated within the last 30 days).'],
+    emd: ['EMD reminder: ' + title, 'Quick reminder to submit your earnest money deposit' + (deal.emdAmount ? ' of ' + money_(deal.emdAmount) : '') + ' for ' + title + ' so we can keep closing on track.'],
+    closing: ['Closing reminder: ' + title + ' — ' + prettyDate_(deal.closingDate), 'Your closing on ' + title + ' is scheduled for ' + prettyDate_(deal.closingDate) + '. Please confirm funds and reach out with any questions.']
+  }[type];
+  var subject = copy[0] + ' [' + deal.id + ']';
+  var ref = 'Deal: ' + deal.id + ' | Investor ref: ' + (inv ? inv.id : '');
+  var offerLink = mailto_(reply, 'OFFER - ' + deal.id + ' - ' + str_(deal.address), 'My offer for ' + title + ' is: $\n\nProof of funds attached: Yes / No\n\n' + ref);
+  var replyLink = mailto_(reply, 'Re: ' + deal.id + ' - ' + str_(deal.address), '\n\n' + ref);
+  var cta = (type === 'noresp' || type === 'offer' || type === 'deadline') ? button_(offerLink, 'MAKE AN OFFER', B.accent, '#FFFFFF', B.accent, true) + '&nbsp; ' + button_(replyLink, 'REPLY', '#FFFFFF', B.green, B.green, true)
+    : button_(replyLink, 'REPLY', B.accent, '#FFFFFF', B.accent, true);
+  var html = '<!DOCTYPE html><html><body style="margin:0;background:#E9EDEA;">{{TEST_BANNER}}<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px;">' +
+    '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#fff;">' +
+    '<tr><td style="background:' + B.black + ';padding:20px 28px;border-bottom:3px solid ' + B.accent + ';font-family:' + B.serif + ';font-size:22px;color:#fff;">SameDay<span style="color:' + B.accentSoft + ';">Investments</span></td></tr>' +
+    '<tr><td style="padding:26px 28px;font-family:' + B.sans + ';font-size:15px;line-height:1.65;color:' + B.text + ';">' +
+    '<p style="margin:0 0 14px;">Hi ' + esc_(first) + ',</p><p style="margin:0 0 18px;">' + esc_(copy[1]) + '</p>' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:' + B.paper + ';border-left:3px solid ' + B.accent + ';"><tr><td style="padding:14px 16px;font-size:14px;">' +
+    '<b>' + esc_(title) + '</b><br><span style="color:' + B.muted + ';">' + esc_(deal.id) + (deal.propertyType ? ' · ' + esc_(deal.propertyType) : '') + ' · ' + esc_(price) + (deal.arv ? ' · ARV ' + esc_(money_(deal.arv)) : '') + '</span></td></tr></table>' +
+    '<p style="margin:22px 0 6px;">' + cta + '</p>' +
+    '<p style="margin:18px 0 0;color:' + B.muted + ';font-size:13px;">' + esc_(str_(settings.CONTACT_NAME) || company) + (settings.CONTACT_PHONE ? ' · ' + esc_(settings.CONTACT_PHONE) : '') + '</p></td></tr>' +
+    '<tr><td style="background:' + B.black + ';padding:16px 28px;font-family:' + B.sans + ';font-size:11px;color:#8E9A94;">' + esc_(company) + (settings.COMPANY_ADDRESS ? ' · ' + esc_(settings.COMPANY_ADDRESS) : '') +
+    ' &nbsp;·&nbsp; <a href="' + mailto_(reply, 'UNSUBSCRIBE', 'Please remove me. Investor ref: ' + (inv ? inv.id : '')) + '" style="color:' + B.accentSoft + ';">Unsubscribe</a></td></tr></table></td></tr></table></body></html>';
+  var text = 'Hi ' + first + ',\n\n' + copy[1] + '\n\n' + title + ' — ' + deal.id + ' — ' + price + '\n\nReply to this email to respond.\n\n' + company + (settings.COMPANY_ADDRESS ? '\n' + settings.COMPANY_ADDRESS : '') + '\nTo unsubscribe, reply UNSUBSCRIBE.';
+  return { subject: subject, html: html, text: text };
+}
+
+function sendRepDigest_(to, items, settings) {
+  var url = '';
+  try { url = ScriptApp.getService().getUrl(); } catch (e) { url = ''; }
+  var rows = items.map(function (i) {
+    return '<tr><td style="padding:8px 10px;border-bottom:1px solid #DDE5E0;"><b>' + esc_(FU_TYPES[i.type]) + '</b></td><td style="padding:8px 10px;border-bottom:1px solid #DDE5E0;">' + esc_(i.property) + ' <span style="color:#5F6B65">' + esc_(i.dealId) + '</span></td><td style="padding:8px 10px;border-bottom:1px solid #DDE5E0;">' + esc_(i.detail) + '</td></tr>';
+  }).join('');
+  var html = '<div style="font-family:Arial,sans-serif;max-width:680px"><div style="background:#0A0A0A;color:#fff;padding:16px 20px;font-family:Georgia,serif;font-size:19px">SameDay<span style="color:#7BC8A0">Investments</span> · Follow-up alerts</div>' +
+    '<div style="padding:16px 20px;background:#fff"><p><b>' + items.length + ' item' + (items.length === 1 ? '' : 's') + '</b> need attention so no buyer slips through the cracks:</p><table style="width:100%;border-collapse:collapse;font-size:13px">' + rows + '</table>' +
+    (url ? '<p style="margin-top:16px"><a href="' + esc_(url) + '" style="background:#0B2E21;color:#fff;padding:10px 16px;text-decoration:none;display:inline-block">Open Follow-Up Center</a></p>' : '') + '</div></div>';
+  GmailApp.sendEmail(to, 'Follow-up alerts: ' + items.length + ' item' + (items.length === 1 ? '' : 's') + ' need attention', items.map(function (i) { return FU_TYPES[i.type] + ' — ' + i.property + ' — ' + i.detail; }).join('\n'),
+    { htmlBody: html, name: str_(settings.SENDER_NAME) || APP_NAME });
+}
+
+/** Sends everything that's due. Caller holds the lock. */
+function runFollowUps_(force) {
+  var s = getSettings_();
+  if (!bool_(s.FU_ON) && !force) return { sent: 0, alerts: 0, skipped: 'Follow-ups are turned off.' };
+  var hour = Number(fmtDate_(new Date(), 'H'));
+  if (!force && (hour < 8 || hour >= 20)) return { sent: 0, alerts: 0, skipped: 'Outside business hours.' };
+  var plan = planFollowUps_();
+  var test = isTestMode_(), testTo = str_(s.TEST_EMAIL) || currentUser_();
+  var invById = {}, dealById = {};
+  readTable_(SHEET.INVESTORS).rows.forEach(function (i) { invById[i.id] = i; });
+  readTable_(SHEET.DEALS).rows.forEach(function (d) { var c = cleanDealRow_(d); dealById[c.id] = c; });
+  var log = [], sentCount = 0, quota = remainingQuota_();
+  if (quota < 0) quota = 1e9;
+  var digests = {};
+  plan.forEach(function (p) {
+    if (p.kind === 'rep') { (digests[p.to] = digests[p.to] || []).push(p); return; }
+    if (sentCount >= 40 || quota <= 1) return; // keep the rest for the next run
+    var inv = invById[p.investorId], deal = dealById[p.dealId];
+    var e = fuEmail_(p.type, deal, inv, s);
+    var to = test ? testTo : p.to;
+    var row = { id: shortId_('F-'), key: p.key, type: FU_TYPES[p.type], dealId: p.dealId, property: p.property, investorId: p.investorId, investorName: p.investorName, to: to, channel: 'Email to buyer', subject: e.subject, sentAt: new Date(), status: test ? 'Test' : 'Sent', mode: test ? 'TEST' : 'LIVE' };
+    try {
+      sendOne_(to, (test ? '[TEST] ' : '') + e.subject, personalize_(e.text, inv, test ? testBanner_(inv, false) : '', false), personalize_(e.html, inv, test ? testBanner_(inv, true) : '', true), null, s);
+      sentCount++; quota--;
+    } catch (err) { row.status = 'Failed: ' + String(err.message || err).slice(0, 120); }
+    log.push(row);
+  });
+  var alerts = 0;
+  Object.keys(digests).forEach(function (to) {
+    var items = digests[to];
+    var status = 'Sent';
+    try { if (quota > 0) { sendRepDigest_(to, items, s); quota--; } else status = 'Failed: quota'; } catch (err) { status = 'Failed: ' + String(err.message || err).slice(0, 120); }
+    items.forEach(function (p) {
+      log.push({ id: shortId_('F-'), key: p.key, type: FU_TYPES[p.type], dealId: p.dealId, property: p.property, investorId: p.investorId, investorName: p.investorName, to: to, channel: 'Alert to rep', subject: p.detail, sentAt: new Date(), status: status, mode: test ? 'TEST' : 'LIVE' });
+      alerts++;
+    });
+  });
+  appendObjects_(SHEET.FOLLOWUPS, log);
+  setSetting_('LAST_FOLLOWUP_RUN', new Date().toISOString());
+  return { sent: sentCount, alerts: alerts, due: plan.length };
+}
+
+/** Trigger entry point (every 2 hours). */
+function runFollowUps() {
+  return withLock_(function () { return runFollowUps_(false); });
+}
+
+// ---------- client API ----------
+
+function runFollowUpsNow() {
+  var r = withLock_(function () { return runFollowUps_(true); });
+  var c = getFollowUpCenter();
+  c.run = r;
+  return c;
+}
+
+function getFollowUpCenter() {
+  var s = getSettings_();
+  var plan = planFollowUps_();
+  var deals = listDeals();
+  return toClient_({
+    due: plan.map(function (p) { p.typeLabel = FU_TYPES[p.type]; return p; }),
+    history: readTable_(SHEET.FOLLOWUPS).rows.slice(-150).reverse(),
+    stuck: deals.filter(function (d) { return d.stuck; }),
+    on: bool_(s.FU_ON),
+    scheduled: hasTrigger_('runFollowUps'),
+    lastRun: s.LAST_FOLLOWUP_RUN || ''
+  });
+}
+
+function enableFollowUps() {
+  deleteTriggers_('runFollowUps');
+  ScriptApp.newTrigger('runFollowUps').timeBased().everyHours(2).create();
+  setSetting_('FU_ON', 'TRUE');
+  return getFollowUpCenter();
+}
+
+function disableFollowUps() {
+  deleteTriggers_('runFollowUps');
+  setSetting_('FU_ON', 'FALSE');
+  return getFollowUpCenter();
 }
 
 
@@ -3070,6 +3644,372 @@ function previewBuyerSource(kind, urlOrId, tabName) {
 }
 
 
+// ================= Matching.gs =================
+/**
+ * Matching.gs — Smart Buyer Matching.
+ *
+ * Scores every buyer 0–100 against a deal using their buy box and real behavior:
+ *   location (zip 30 / city-market 25 / has bought there 20) · property type 20 · price 15 ·
+ *   acreage 10 (land) · rehab vs turnkey 5 · ROI 5 · tier 10 · engagement 5 · verified funds 3 ·
+ *   closed deals with us (+) · contract defaults (−)
+ * Hard "blockers" (deal is outside what they told you they buy) exclude a buyer entirely.
+ * Fit: strong ≥ 70 · good ≥ MATCH_MIN_SCORE · weak below · no = blocked.
+ */
+
+function isLandDeal_(d) {
+  return /land|lot|acre|parcel/i.test(str_(d.propertyType)) || (dealAcres_(d) > 0 && !Number(d.sqft) && !Number(d.beds));
+}
+
+function dealAcres_(d) {
+  if (Number(d.acres) > 0) return Number(d.acres);
+  var t = lc_(d.lotSize), m;
+  if ((m = t.match(/([\d.]+)\s*(ac|acre)/))) return parseFloat(m[1]);
+  if ((m = t.match(/([\d,]+)\s*(sq|sf)/))) return parseFloat(m[1].replace(/,/g, '')) / 43560;
+  return 0;
+}
+
+function tierRank_(tier) {
+  var tiers = list_(getSettings_().TIERS).map(lc_);
+  var i = tiers.indexOf(lc_(tier));
+  return i < 0 ? 99 : i; // 0 = top tier
+}
+
+function isRehabDeal_(d) {
+  var price = Number(d.askingPrice) || 0, rep = Number(d.repairs) || 0;
+  return rep >= 15000 || (price && rep / price >= 0.1);
+}
+
+function dealRoi_(d) {
+  var m = dealMetrics_(d);
+  return m.allIn && m.spread !== '' ? Math.round((m.spread / m.allIn) * 1000) / 10 : '';
+}
+
+/** Behavior lookups for many investors at once. */
+function matchContext_(dealId) {
+  var resp = {}, offers = {};
+  readTable_(SHEET.RESPONSES).rows.forEach(function (r) {
+    if (!r.investorId) return;
+    var k = r.investorId;
+    resp[k] = resp[k] || { interested: 0, total: 0 };
+    resp[k].total++;
+    if (r.type === 'Interested' || r.type === 'Offer') resp[k].interested++;
+  });
+  readTable_(SHEET.OFFERS).rows.forEach(function (o) { if (o.investorId) offers[o.investorId] = (offers[o.investorId] || 0) + 1; });
+  return { resp: resp, offers: offers, dealId: dealId };
+}
+
+function matchInvestor_(inv, deal, ctx) {
+  var reasons = [], blockers = [], score = 0;
+  var city = lc_(deal.city), market = lc_(deal.market), zip = str_(deal.zip).slice(0, 5);
+  var land = isLandDeal_(deal);
+
+  // Location (30)
+  var zips = list_(inv.zips).map(function (z) { return z.slice(0, 5); });
+  var mkts = list_(inv.markets).map(lc_);
+  var boughtHere = city && lc_(inv.purchases).indexOf(city) > -1;
+  var mktHit = mkts.some(function (m) { return (market && (m === market || m.indexOf(market) > -1 || market.indexOf(m) > -1)) || (city && (m === city || m.indexOf(city) > -1)); });
+  if (zip && zips.indexOf(zip) > -1) { score += 30; reasons.push('Buys in ' + zip); }
+  else if (mktHit) { score += 25; reasons.push('Buys in ' + (deal.market || deal.city)); }
+  else if (boughtHere) { score += 20; reasons.push('Has bought in ' + titleCase_(deal.city)); }
+  else if (!zips.length && !mkts.length) { score += 10; }
+  else blockers.push('Outside their areas');
+  if (boughtHere && (mktHit || zips.indexOf(zip) > -1)) { score += 5; reasons.push('Recent purchases nearby'); }
+
+  // Property type (20)
+  var types = list_(inv.propertyTypes).map(lc_);
+  var dType = lc_(normalizePropType_(deal.propertyType));
+  var dev = /develop|builder|construction/i.test(inv.categories);
+  if (land) {
+    if (types.some(function (t) { return /land|lot/.test(t); }) || dev) { score += 20; reasons.push(dev ? 'Builder / developer' : 'Buys land'); }
+    else if (!types.length) score += 4;
+    else blockers.push('Doesn\'t buy land');
+  } else if (!types.length) score += 8;
+  else if (dType && types.some(function (t) { return t === dType || t.indexOf(dType) > -1 || dType.indexOf(t) > -1; })) { score += 20; reasons.push('Buys ' + normalizePropType_(deal.propertyType)); }
+  else if (dType) blockers.push('Doesn\'t buy ' + normalizePropType_(deal.propertyType));
+
+  // Price (15)
+  var price = Number(deal.askingPrice) || 0, max = Number(inv.maxPrice) || 0, min = Number(inv.minPrice) || 0;
+  if (price && max && price > max * 1.05) blockers.push('Above their max ' + money_(max));
+  else if (price && (max || min)) {
+    if (min && price < min * 0.8) { score += 5; reasons.push('Below their usual range'); }
+    else { score += 15; reasons.push('Within budget'); }
+  } else score += 6;
+
+  // Acreage (10, land)
+  var acres = dealAcres_(deal);
+  var minA = Number(inv.minAcres) || 0, maxA = Number(inv.maxAcres) || 0;
+  if (acres && (minA || maxA)) {
+    if ((minA && acres < minA) || (maxA && acres > maxA)) blockers.push('Acreage outside ' + (minA || 0) + '–' + (maxA || 'any') + ' ac');
+    else { score += 10; reasons.push(acres + ' ac fits'); }
+  } else if (land) score += 4;
+
+  // Rehab vs turnkey (5)
+  var cond = lc_(inv.condition);
+  if (!land && cond) {
+    var rehab = isRehabDeal_(deal);
+    if (cond === 'either') score += 3;
+    else if ((cond === 'rehab') === rehab) { score += 5; reasons.push(rehab ? 'Wants rehabs' : 'Wants turnkey'); }
+    else { score -= 5; reasons.push('Prefers ' + (rehab ? 'turnkey' : 'rehab')); }
+  }
+
+  // ROI (5)
+  var roi = dealRoi_(deal), minRoi = Number(inv.minRoi) || 0;
+  if (!land && minRoi && roi !== '') {
+    if (roi >= minRoi) { score += 5; reasons.push('ROI ' + roi + '% ≥ their ' + minRoi + '%'); }
+    else { score -= 5; reasons.push('ROI ' + roi + '% below their ' + minRoi + '%'); }
+  }
+
+  // Tier (10)
+  var rank = tierRank_(inv.tier);
+  score += rank === 0 ? 10 : rank === 1 ? 6 : rank === 2 ? 3 : 0;
+  if (rank === 0) reasons.push(inv.tier + ' buyer');
+
+  // Behavior
+  var r = (ctx && ctx.resp[inv.id]) || { interested: 0 };
+  if (r.interested) { score += Math.min(5, r.interested * 2); reasons.push('Responsive (' + r.interested + ' interested)'); }
+  if (pofStatus_(inv) === 'Verified') { score += 3; reasons.push('POF verified'); }
+  var closed = Number(inv.dealsClosed) || 0, defaults = Number(inv.defaults) || 0;
+  if (closed) { score += Math.min(8, closed * 2); reasons.push(closed + ' closed with us'); }
+  if (defaults) { score -= defaults * 10; reasons.push(defaults + ' contract default' + (defaults > 1 ? 's' : '')); }
+
+  score = Math.max(0, Math.min(100, Math.round(score)));
+  var minScore = parseInt(getSettings_().MATCH_MIN_SCORE, 10) || 50;
+  var fit = blockers.length ? 'no' : score >= 70 ? 'strong' : score >= minScore ? 'good' : 'weak';
+  return { score: blockers.length ? 0 : score, rawScore: score, fit: fit, reasons: reasons, blockers: blockers, tierRank: rank };
+}
+
+/** Ranks every active buyer for a deal. */
+function rankBuyers_(deal, investors) {
+  var ctx = matchContext_(deal.id);
+  return investors.map(function (inv) {
+    var m = matchInvestor_(inv, deal, ctx);
+    m.investor = inv;
+    return m;
+  }).sort(function (a, b) { return (b.score - a.score) || (a.tierRank - b.tierRank); });
+}
+
+// ---------- client API ----------
+
+function matchBuyers(dealId) {
+  var deal = getDealRow_(dealId);
+  var all = readTable_(SHEET.INVESTORS).rows;
+  var active = all.filter(function (i) { return (str_(i.status) || 'Active') === 'Active' && !bool_(i.optOut) && isEmail_(i.email); });
+  var ranked = rankBuyers_(deal, active);
+  var counts = { strong: 0, good: 0, weak: 0, no: 0 };
+  ranked.forEach(function (m) { counts[m.fit]++; });
+  return toClient_({
+    deal: cleanDealRow_(deal),
+    land: isLandDeal_(deal),
+    acres: dealAcres_(deal),
+    counts: counts,
+    pendingReview: all.filter(function (i) { return str_(i.status) === PENDING_REVIEW; }).length,
+    matches: ranked.map(function (m) {
+      var i = m.investor;
+      return {
+        id: i.id, name: investorName_(i), company: str_(i.company), email: str_(i.email), tier: str_(i.tier),
+        score: m.score, fit: m.fit, reasons: m.reasons, blockers: m.blockers, pofStatus: pofStatus_(i),
+        reliability: reliabilityOf_(i), markets: str_(i.markets), maxPrice: i.maxPrice, dealsReceived: Number(i.dealsReceived) || 0
+      };
+    })
+  });
+}
+
+
+// ================= Offers.gs =================
+/**
+ * Offers.gs — Offer Management & Comparison.
+ *
+ * Offers arrive automatically (an investor replies "OFFER - SDI-…" or the inbox scanner reads an
+ * offer amount) or are entered by the team. Each offer tracks amount, assignment fee, EMD,
+ * inspection period, closing date, financing, proof of funds and contract status.
+ *
+ * Strength score (0–100) for side-by-side comparison:
+ *   your assignment fee / offer price 40 · EMD 15 · proof of funds 15 · reliability 10 ·
+ *   closing speed 10 · inspection period 10
+ */
+
+var ACTIVE_OFFER = ['Received', 'Countered', 'Accepted', 'Backup', 'Under Contract'];
+
+function offerFee_(o, deal) {
+  if (o.assignmentFee !== '' && o.assignmentFee !== null && o.assignmentFee !== undefined && !isNaN(Number(o.assignmentFee))) return Number(o.assignmentFee);
+  var cp = Number(deal && deal.contractPrice) || 0;
+  return cp && Number(o.amount) ? Number(o.amount) - cp : '';
+}
+
+function offerPofLabel_(o, inv) {
+  var st = inv ? pofStatus_(inv) : 'None';
+  if (st === 'Verified' || st === 'Expiring') return 'Verified';
+  if (st === 'Expired') return 'Expired';
+  return str_(o.pof) || (st === 'Pending' ? 'Provided' : 'Missing');
+}
+
+/** Adds strength score + highlights to a set of offers for one deal. */
+function scoreOffers_(offers, deal, invById) {
+  var act = offers.filter(function (o) { return ACTIVE_OFFER.indexOf(o.status) > -1; });
+  var vals = function (fn) { return act.map(fn).filter(function (v) { return v !== '' && !isNaN(v); }); };
+  var fees = vals(function (o) { return Number(offerFee_(o, deal) === '' ? o.amount : offerFee_(o, deal)); });
+  var emds = vals(function (o) { return Number(o.emd) || 0; });
+  var maxFee = Math.max.apply(null, fees.concat([1])), minFee = Math.min.apply(null, fees.concat([maxFee]));
+  var maxEmd = Math.max.apply(null, emds.concat([1]));
+  var best = {};
+  offers.forEach(function (o) {
+    var inv = invById[o.investorId];
+    var fee = offerFee_(o, deal);
+    var feeVal = fee === '' ? Number(o.amount) || 0 : fee;
+    var s = 0;
+    s += maxFee === minFee ? 40 : 40 * (feeVal - minFee) / (maxFee - minFee);
+    s += 15 * Math.min(1, (Number(o.emd) || 0) / maxEmd);
+    var pof = offerPofLabel_(o, inv);
+    s += pof === 'Verified' ? 15 : pof === 'Provided' ? 8 : 0;
+    var rel = inv ? reliabilityOf_(inv) : '';
+    s += rel === '' ? 5 : rel * 2;
+    if (inv && Number(inv.defaults) > 0) s -= 10;
+    var close = parseDateLoose_(o.closingDate);
+    var daysToClose = close ? Math.max(0, Math.round((close.getTime() - Date.now()) / 86400000)) : '';
+    s += daysToClose === '' ? 4 : daysToClose <= 14 ? 10 : daysToClose <= 30 ? 7 : 3;
+    var insp = o.inspectionDays === '' ? '' : Number(o.inspectionDays);
+    s += insp === '' ? 4 : insp <= 3 ? 10 : insp <= 7 ? 7 : insp <= 14 ? 4 : 1;
+    o.strength = ACTIVE_OFFER.indexOf(o.status) > -1 ? Math.max(0, Math.min(100, Math.round(s))) : 0;
+    o.fee = fee;
+    o.pofLabel = pof;
+    o.reliability = rel;
+    o.buyerDefaults = inv ? Number(inv.defaults) || 0 : 0;
+    o.daysToClose = daysToClose;
+    o.tier = inv ? str_(inv.tier) : '';
+    if (ACTIVE_OFFER.indexOf(o.status) > -1) {
+      if (!best.amount || Number(o.amount) > Number(best.amount.amount)) best.amount = o;
+      if (Number(o.emd) && (!best.emd || Number(o.emd) > Number(best.emd.emd))) best.emd = o;
+      if (daysToClose !== '' && (!best.close || daysToClose < best.close.daysToClose)) best.close = o;
+      if (insp !== '' && (!best.insp || insp < Number(best.insp.inspectionDays))) best.insp = o;
+      if (!best.strength || o.strength > best.strength.strength) best.strength = o;
+    }
+  });
+  offers.forEach(function (o) {
+    o.best = Object.keys(best).filter(function (k) { return best[k] === o; });
+  });
+  return offers.sort(function (a, b) { return b.strength - a.strength || Number(b.amount) - Number(a.amount); });
+}
+
+/** Creates an offer from an inbox / manual response of type Offer. Caller holds the lock. */
+function createOfferFromResponse_(resp) {
+  if (!resp.dealId || !resp.offerAmount) return null;
+  var exists = readTable_(SHEET.OFFERS).rows.some(function (o) { return o.responseId === resp.id; });
+  if (exists) return null;
+  var deal = findBy_(SHEET.DEALS, 'id', resp.dealId);
+  if (!deal) return null;
+  var inv = resp.investorId ? findBy_(SHEET.INVESTORS, 'id', resp.investorId) : null;
+  var text = str_(resp.message);
+  var emd = (text.match(/\bemd\b[^$\d]{0,20}\$?\s?([\d,]+(?:\.\d+)?\s*k?)/i) || [])[1];
+  var insp = (text.match(/(\d{1,2})[\s-]*day[s]?\s*(inspection|due diligence|dd)/i) || [])[1];
+  var close = (text.match(/clos\w*\s*(in|within)\s*(\d{1,3})\s*days/i) || [])[2];
+  var row = {
+    id: shortId_('O-'), dealId: deal.id, property: dealTitle_(deal), investorId: inv ? inv.id : '',
+    investorName: inv ? investorName_(inv) : str_(resp.investorName), investorEmail: lc_(resp.investorEmail),
+    received: new Date(), amount: num_(resp.offerAmount), assignmentFee: '', emd: emd ? num_(emd.replace(/\s/g, '')) : '',
+    inspectionDays: insp ? Number(insp) : '', closingDate: close ? fmtDate_(new Date(Date.now() + Number(close) * 86400000)) : '',
+    financing: /cash/i.test(text) ? 'Cash' : /hard money|private lend/i.test(text) ? 'Hard money' : '',
+    pof: /proof of funds|pof/i.test(text) && !/no pof|without pof/i.test(text) ? 'Provided' : '',
+    status: 'Received', counter: '', source: 'Email (auto)', notes: text.slice(0, 300), updated: new Date(), responseId: resp.id
+  };
+  var fee = offerFee_(row, deal);
+  if (fee !== '') row.assignmentFee = fee;
+  appendObjects_(SHEET.OFFERS, [row]);
+  advanceStage_(deal.id, 'Offer Received');
+  return row;
+}
+
+// ---------- client API ----------
+
+function listOffers(dealId) {
+  var invById = {};
+  readTable_(SHEET.INVESTORS).rows.forEach(function (i) { invById[i.id] = i; });
+  var deals = {};
+  readTable_(SHEET.DEALS).rows.forEach(function (d) { deals[d.id] = d; });
+  var rows = readTable_(SHEET.OFFERS).rows.filter(function (o) { return !dealId || o.dealId === dealId; });
+  var byDeal = {};
+  rows.forEach(function (o) { (byDeal[o.dealId] = byDeal[o.dealId] || []).push(o); });
+  var out = [];
+  Object.keys(byDeal).forEach(function (id) { out = out.concat(scoreOffers_(byDeal[id], deals[id] || {}, invById)); });
+  return toClient_(out);
+}
+
+/** Side-by-side comparison for one deal. */
+function compareOffers(dealId) {
+  var deal = getDeal(dealId);
+  return { deal: deal, offers: listOffers(dealId) };
+}
+
+/** Create or update an offer. */
+function saveOffer(o) {
+  return withLock_(function () {
+    o = o || {};
+    var deal = getDealRow_(o.dealId);
+    if (!num_(o.amount)) throw new Error('Enter the offer amount.');
+    var inv = o.investorId ? findBy_(SHEET.INVESTORS, 'id', o.investorId) : null;
+    if (!inv && !str_(o.investorName)) throw new Error('Choose the buyer or enter a name.');
+    if (o.closingDate && !/^\d{4}-\d{2}-\d{2}$/.test(o.closingDate)) throw new Error('Closing date must be a date.');
+    var f = {
+      dealId: deal.id, property: dealTitle_(deal), investorId: inv ? inv.id : '',
+      investorName: inv ? investorName_(inv) : str_(o.investorName), investorEmail: inv ? lc_(inv.email) : lc_(o.investorEmail),
+      amount: num_(o.amount), emd: num_(o.emd), inspectionDays: num_(o.inspectionDays), closingDate: str_(o.closingDate),
+      financing: str_(o.financing), pof: str_(o.pof), notes: str_(o.notes), updated: new Date()
+    };
+    f.assignmentFee = o.assignmentFee !== undefined && o.assignmentFee !== '' ? num_(o.assignmentFee) : offerFee_({ amount: f.amount }, deal);
+    if (o.id) {
+      var ex = findBy_(SHEET.OFFERS, 'id', o.id);
+      if (!ex) throw new Error('Offer not found.');
+      updateObject_(SHEET.OFFERS, ex._row, f);
+      f.id = o.id;
+    } else {
+      f.id = shortId_('O-');
+      f.received = new Date();
+      f.status = 'Received';
+      f.source = 'Manual';
+      appendObjects_(SHEET.OFFERS, [f]);
+      advanceStage_(deal.id, 'Offer Received');
+    }
+    return listOffers(deal.id).filter(function (x) { return x.id === f.id; })[0];
+  });
+}
+
+/**
+ * Changes an offer's contract status.
+ *   Accepted → deal moves to Buyer Selected with this buyer; other open offers become Backup.
+ *   Under Contract → deal moves to Assignment Signed.
+ *   Countered → stores counter amount; deal moves to Negotiating.
+ *   Fell Through → records a failed closing for the buyer; deal goes back to Negotiating.
+ */
+function setOfferStatus(offerId, status, extra) {
+  if (OFFER_STATUSES.indexOf(status) === -1) throw new Error('Unknown offer status.');
+  extra = extra || {};
+  return withLock_(function () {
+    var o = findBy_(SHEET.OFFERS, 'id', offerId);
+    if (!o) throw new Error('Offer not found.');
+    var f = { status: status, updated: new Date() };
+    if (status === 'Countered') { f.counter = num_(extra.counter); advanceStage_(o.dealId, 'Negotiating'); }
+    updateObject_(SHEET.OFFERS, o._row, f);
+    var deal = getDealRow_(o.dealId);
+    if (status === 'Accepted') {
+      readTable_(SHEET.OFFERS).rows.forEach(function (x) {
+        if (x.dealId === o.dealId && x.id !== o.id && ['Received', 'Countered', 'Accepted'].indexOf(x.status) > -1) updateObject_(SHEET.OFFERS, x._row, { status: 'Backup', updated: new Date() });
+      });
+      var df = { stage: 'Buyer Selected', stageUpdated: new Date(), status: 'Pending', buyerInvestorId: o.investorId || '', buyer: o.investorName, updated: new Date() };
+      if (o.emd !== '') df.emdAmount = o.emd;
+      if (str_(o.closingDate)) df.closingDate = str_(o.closingDate);
+      updateObject_(SHEET.DEALS, deal._row, df);
+    } else if (status === 'Under Contract') {
+      updateObject_(SHEET.DEALS, deal._row, { stage: 'Assignment Signed', stageUpdated: new Date(), status: 'Pending', assignmentSigned: new Date(), buyerInvestorId: o.investorId || '', buyer: o.investorName, updated: new Date() });
+    } else if (status === 'Fell Through') {
+      if (o.investorId) recordBuyerOutcome_(o.investorId, 'default', o.dealId, str_(extra.note));
+      if (str_(deal.buyerInvestorId) === str_(o.investorId)) {
+        updateObject_(SHEET.DEALS, deal._row, { stage: 'Negotiating', stageUpdated: new Date(), status: 'Available', buyerInvestorId: '', buyer: '', updated: new Date() });
+      }
+    }
+    return compareOffers(o.dealId);
+  });
+}
+
+
 // ================= PublicRecords.gs =================
 /**
  * PublicRecords.gs — finds ACTIVE investor buyers from recent recorded sales, automatically.
@@ -3507,4 +4447,144 @@ function previewDealMachine() {
     out[kind] = total;
   });
   return { cash: out.cash, hardMoney: out['hard money'], land: out.land, days: parseInt(s.INTAKE_DM_DAYS, 10) || 14, counties: fips.length };
+}
+
+
+// ================= Verification.gs =================
+/**
+ * Verification.gs — Buyer Verification Center.
+ * Proof of funds (stored privately in Drive), entity, purchase history, completed transactions,
+ * contract defaults and an automatic reliability rating. Flags expired / expiring POF and
+ * buyers with failed closings.
+ */
+
+/** None | Pending (uploaded, not verified) | Verified | Expiring (≤14 days) | Expired */
+function pofStatus_(inv) {
+  var file = str_(inv.pofFileUrl), verified = inv.pofVerifiedOn;
+  if (!file && !verified) return 'None';
+  if (!verified) return 'Pending';
+  var exp = parseDateLoose_(inv.pofExpires);
+  if (exp) {
+    var left = exp.getTime() - Date.now();
+    if (left < 0) return 'Expired';
+    if (left < 14 * 86400000) return 'Expiring';
+  }
+  return 'Verified';
+}
+
+/** 1–5 stars from closings vs defaults; '' when there's no history yet. Manual rating wins if set. */
+function reliabilityOf_(inv) {
+  var manual = Number(inv.reliability);
+  if (manual >= 1 && manual <= 5) return manual;
+  var closed = Number(inv.dealsClosed) || 0, defaults = Number(inv.defaults) || 0;
+  if (!closed && !defaults) return '';
+  return Math.max(1, Math.min(5, Math.round(3 + Math.min(closed, 4) * 0.5 - defaults * 1.5)));
+}
+
+function buyerFlags_(inv) {
+  var f = [], pof = pofStatus_(inv);
+  if (pof === 'Expired') f.push('POF expired');
+  if (pof === 'Expiring') f.push('POF expiring soon');
+  if (pof === 'Pending') f.push('POF needs verification');
+  if (Number(inv.defaults) > 0) f.push(inv.defaults + ' failed closing' + (Number(inv.defaults) > 1 ? 's' : ''));
+  return f;
+}
+
+function pofFolder_() {
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty('POF_FOLDER_ID');
+  if (id) { try { return DriveApp.getFolderById(id); } catch (e) { /* recreate */ } }
+  var folder = rootFolder_().createFolder('Proof of Funds (private)'); // never shared by link
+  props.setProperty('POF_FOLDER_ID', folder.getId());
+  return folder;
+}
+
+// ---------- client API ----------
+
+/** Upload a proof-of-funds document for a buyer (status becomes Pending until verified). */
+function uploadPof(investorId, fileName, mimeType, base64, amount, expires) {
+  var inv = findBy_(SHEET.INVESTORS, 'id', investorId);
+  if (!inv) throw new Error('Buyer not found.');
+  var file = pofFolder_().createFile(blobFromBase64_(base64, mimeType, investorId + ' — POF — ' + (fileName || 'document')));
+  return withLock_(function () {
+    var fresh = findBy_(SHEET.INVESTORS, 'id', investorId);
+    var f = { pofFileUrl: file.getUrl(), pofVerifiedOn: '', updated: new Date() };
+    if (amount !== undefined && amount !== '') f.pofAmount = num_(amount);
+    if (expires) f.pofExpires = str_(expires);
+    updateObject_(SHEET.INVESTORS, fresh._row, f);
+    return cleanInvestorRow_(findBy_(SHEET.INVESTORS, 'id', investorId));
+  });
+}
+
+/** Mark POF verified (sets amount / expiry; default expiry = today + POF_VALID_DAYS). */
+function verifyPof(investorId, amount, expires) {
+  return withLock_(function () {
+    var inv = findBy_(SHEET.INVESTORS, 'id', investorId);
+    if (!inv) throw new Error('Buyer not found.');
+    var days = parseInt(getSettings_().POF_VALID_DAYS, 10) || 90;
+    var exp = str_(expires) || fmtDate_(new Date(Date.now() + days * 86400000));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(exp)) throw new Error('Expiry must be a date.');
+    var f = { pofVerifiedOn: new Date(), pofExpires: exp, updated: new Date() };
+    if (amount !== undefined && amount !== '') f.pofAmount = num_(amount);
+    updateObject_(SHEET.INVESTORS, inv._row, f);
+    return cleanInvestorRow_(findBy_(SHEET.INVESTORS, 'id', investorId));
+  });
+}
+
+/** outcome: 'closed' | 'default'. Updates counts, reliability and last deal bought. */
+function recordBuyerOutcome(investorId, outcome, dealId, note) {
+  return withLock_(function () { return recordBuyerOutcome_(investorId, outcome, dealId, note); });
+}
+
+function recordBuyerOutcome_(investorId, outcome, dealId, note) {
+  var inv = findBy_(SHEET.INVESTORS, 'id', investorId);
+  if (!inv) throw new Error('Buyer not found.');
+  var f = { updated: new Date() };
+  var deal = dealId ? findBy_(SHEET.DEALS, 'id', dealId) : null;
+  if (outcome === 'closed') {
+    f.dealsClosed = (Number(inv.dealsClosed) || 0) + 1;
+    if (deal) f.lastDealBought = deal.id + ' — ' + dealTitle_(deal) + ' (' + fmtDate_(new Date(), 'MMM d, yyyy') + ')';
+  } else if (outcome === 'default') {
+    f.defaults = (Number(inv.defaults) || 0) + 1;
+    f.notes = (str_(inv.notes) + ' [Failed closing' + (deal ? ' on ' + deal.id : '') + ' ' + fmtDate_(new Date()) + (note ? ': ' + note : '') + ']').trim();
+  } else throw new Error('Unknown outcome.');
+  updateObject_(SHEET.INVESTORS, inv._row, f);
+  return cleanInvestorRow_(findBy_(SHEET.INVESTORS, 'id', investorId));
+}
+
+function setBuyerRating(investorId, rating) {
+  return withLock_(function () {
+    var inv = findBy_(SHEET.INVESTORS, 'id', investorId);
+    if (!inv) throw new Error('Buyer not found.');
+    var r = Number(rating);
+    updateObject_(SHEET.INVESTORS, inv._row, { reliability: r >= 1 && r <= 5 ? r : '', updated: new Date() });
+    return cleanInvestorRow_(findBy_(SHEET.INVESTORS, 'id', investorId));
+  });
+}
+
+/** Everything the Verification Center screen needs. */
+function getVerificationCenter() {
+  var invs = readTable_(SHEET.INVESTORS).rows.filter(function (i) { return str_(i.status) !== 'Inactive'; });
+  var activeOffers = {};
+  readTable_(SHEET.OFFERS).rows.forEach(function (o) {
+    if (['Received', 'Countered', 'Accepted', 'Backup', 'Under Contract'].indexOf(o.status) > -1) activeOffers[o.investorId] = (activeOffers[o.investorId] || 0) + 1;
+  });
+  var rows = invs.map(function (i) {
+    var c = cleanInvestorRow_(i);
+    c.activeOffers = activeOffers[i.id] || 0;
+    if (c.activeOffers && c.pofStatus !== 'Verified' && c.pofStatus !== 'Expiring') c.flags.push('Active offer without verified POF');
+    return c;
+  });
+  var count = function (fn) { return rows.filter(fn).length; };
+  return {
+    buyers: rows,
+    summary: {
+      verified: count(function (r) { return r.pofStatus === 'Verified'; }),
+      expiring: count(function (r) { return r.pofStatus === 'Expiring'; }),
+      expired: count(function (r) { return r.pofStatus === 'Expired'; }),
+      pending: count(function (r) { return r.pofStatus === 'Pending'; }),
+      defaults: count(function (r) { return Number(r.defaults) > 0; }),
+      offersNoPof: count(function (r) { return r.activeOffers && ['Verified', 'Expiring'].indexOf(r.pofStatus) === -1; })
+    }
+  };
 }

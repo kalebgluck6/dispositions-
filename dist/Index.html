@@ -38,7 +38,7 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; }
 
 /* ---------- layout ---------- */
 .app { display: grid; grid-template-columns: 256px 1fr; min-height: 100vh; }
-.sidebar { background: #040605; border-right: 1px solid var(--line); padding: 26px 16px; position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; }
+.sidebar { background: #040605; border-right: 1px solid var(--line); padding: 26px 16px; position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; overflow-y: auto; }
 .brand { padding: 0 10px 26px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
 .brand .mark { display: flex; align-items: center; gap: 12px; }
 .brand .monogram { width: 40px; height: 40px; border: 1px solid var(--accent); display: grid; place-items: center; font-family: var(--serif); font-size: 20px; color: var(--accent-soft); letter-spacing: 1px; background: linear-gradient(135deg, var(--green-800), #050706); }
@@ -46,6 +46,8 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; }
 .brand .word span { color: var(--accent-soft); }
 .brand .sub { font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--muted); margin-top: 6px; }
 .nav { display: flex; flex-direction: column; gap: 2px; }
+.nav-sec { font-size: 9.5px; letter-spacing: 2.2px; text-transform: uppercase; color: var(--muted); padding: 14px 12px 6px; font-weight: 600; }
+.nav-sec:first-child { padding-top: 0; }
 .nav a { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: var(--text-2); text-decoration: none; cursor: pointer; font-size: 13.5px; border: 1px solid transparent; }
 .nav a:hover { background: var(--panel); color: #fff; }
 .nav a.active { background: var(--green-800); color: #fff; border-color: var(--green-700); }
@@ -134,6 +136,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .st-Available { color: var(--accent-2); border-color: rgba(71,185,124,.4); background: rgba(71,185,124,.08); }
 .st-Pending { color: var(--amber); border-color: rgba(232,181,58,.4); background: rgba(232,181,58,.08); }
+.st-Dead { color: #FF8A84; border-color: rgba(217,83,79,.4); background: rgba(217,83,79,.07); }
 .st-Sold { color: #9FB3FF; border-color: rgba(159,179,255,.35); background: rgba(159,179,255,.07); }
 .st-Active { color: var(--accent-2); border-color: rgba(71,185,124,.4); }
 .st-Inactive { color: var(--muted); border-color: var(--line-2); }
@@ -356,6 +359,12 @@ const I = {
   edit: '<path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>',
   eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
   refresh: '<path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
+  match: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
+  shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
+  offer: '<path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+  bell: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
+  pipe: '<rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="11" rx="1"/><rect x="17" y="4" width="4" height="7" rx="1"/>',
+  key: '<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>',
   mail: '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><path d="m22 6-10 7L2 6"/>'
 };
 const icon = (n) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + I[n] + '</svg>';
@@ -369,27 +378,42 @@ const S = {
   form: null, pendingPhotos: [], photoPreviews: null,
   tracking: null, trackTab: 'recipients', showTest: false,
   responses: null, respFilter: { deal: '', type: '', followUp: '' },
-  jobs: null, imp: { url: '', tab: '' }, intake: null, intakeSel: new Set()
+  jobs: null, imp: { url: '', tab: '' }, intake: null, intakeSel: new Set(), pipe: null, matchDeal: '', matchData: null, offersAll: null, offerFilter: { deal: '', status: 'active' }, ver: null, verFilter: 'flagged', fu: null, fuDue: 0, dealMatches: null, dealOffers: null
 };
 const L = () => S.settings.lists;
 
 const NAV = [
+  ['Main Navigation'],
   ['dashboard', 'Dashboard', 'dash'],
   ['deals', 'Deals', 'deals'],
+  ['pipeline', 'Disposition Pipeline', 'pipe'],
   ['dealForm', 'Submit Deal', 'plus'],
+  ['Buyer Management'],
   ['investors', 'Investors', 'users'],
   ['intake', 'New Buyers', 'star'],
+  ['matching', 'Buyer Matching', 'match'],
+  ['verification', 'Buyer Verification', 'shield'],
   ['import', 'Import Investors', 'upload'],
-  ['responses', 'Responses', 'inbox'],
+  ['Distribution & Communication'],
   ['jobs', 'Distributions', 'log'],
+  ['responses', 'Responses', 'inbox'],
+  ['offers', 'Offers & Negotiations', 'offer'],
+  ['followups', 'Follow-Up Center', 'bell'],
+  ['Operations'],
+  ['closing', 'Contract & Closing Tracker', 'key'],
   ['settings', 'Settings', 'gear']
 ];
-const TITLES = { dashboard: 'Dashboard', deals: 'Deals', dealForm: 'Submit a Deal', deal: 'Deal', investors: 'Investor Network', import: 'Import Investors', responses: 'Responses & Interested Buyers', jobs: 'Distribution History', settings: 'Settings', intake: 'New Buyers' };
+const TITLES = { dashboard: 'Dashboard', deals: 'Deals', dealForm: 'Submit a Deal', deal: 'Deal', investors: 'Investor Network', import: 'Import Investors', responses: 'Responses & Interested Buyers', jobs: 'Distribution History', settings: 'Settings', intake: 'New Buyers', pipeline: 'Disposition Pipeline', matching: 'Smart Buyer Matching', verification: 'Buyer Verification Center', offers: 'Offers & Negotiations', followups: 'Follow-Up Center', closing: 'Contract & Closing Tracker' };
 
 function go(view, params) {
   S.view = view; S.params = params || {};
   if (view === 'dealForm') { S.form = null; S.pendingPhotos = []; S.photoPreviews = null; S.pendingVideo = null; }
-  if (view === 'deal') { S.tracking = null; S.trackTab = S.params.tab || 'recipients'; }
+  if (view === 'deal') { S.tracking = null; S.trackTab = S.params.tab || 'matches'; S.dealMatches = null; S.dealOffers = null; }
+  if (['pipeline', 'closing'].includes(view)) S.pipe = null;
+  if (view === 'offers') S.offersAll = null;
+  if (view === 'verification') S.ver = null;
+  if (view === 'followups') S.fu = null;
+  if (view === 'matching') { S.matchData = null; if (S.params.id) S.matchDeal = S.params.id; }
   window.scrollTo(0, 0);
   render();
 }
@@ -397,10 +421,12 @@ function go(view, params) {
 function renderChrome() {
   const newResp = (S.dashboard && S.dashboard.responses30d) || 0;
   $('#nav').innerHTML = NAV.map(([v, label, ic]) => {
+    if (!label) return '<div class="nav-sec">' + esc(v) + '</div>';
     const active = S.view === v || (v === 'deals' && S.view === 'deal') || (v === 'dealForm' && S.view === 'dealForm' && !S.params.id) || (v === 'deals' && S.view === 'dealForm' && S.params.id);
     const nPending = S.investors.filter(i => i.status === 'Pending Review').length;
     const badge = v === 'investors' ? '<span class="badge">' + S.investors.filter(i => i.status === 'Active' && !i.optOut).length + '</span>'
-      : v === 'intake' && nPending ? '<span class="badge" style="background:var(--amber)">' + nPending + '</span>' : '';
+      : v === 'intake' && nPending ? '<span class="badge" style="background:var(--amber)">' + nPending + '</span>'
+      : v === 'followups' && S.fuDue ? '<span class="badge" style="background:var(--amber)">' + S.fuDue + '</span>' : '';
     return '<a data-go="' + v + '" class="' + (active ? 'active' : '') + '">' + icon(ic) + esc(label) + badge + '</a>';
   }).join('');
   const st = S.settings;
@@ -524,13 +550,13 @@ VIEWS.deals = {
 function dealCard(d) {
   const m = d.metrics || {};
   return '<div class="deal-card">' +
-    '<div class="top" data-go="deal" data-id="' + esc(d.id) + '"><div class="row" style="justify-content:space-between"><span class="id">' + esc(d.id) + (d.propertyType ? ' · ' + esc(d.propertyType) : '') + '</span>' + statusPill(d.status) + '</div>' +
+    '<div class="top" data-go="deal" data-id="' + esc(d.id) + '"><div class="row" style="justify-content:space-between"><span class="id">' + esc(d.id) + (d.propertyType ? ' · ' + esc(d.propertyType) : '') + '</span>' + statusPill(d.status) + '</div>' + '<div class="small" style="color:var(--accent-soft);margin-top:4px">' + esc(d.stage || '') + (d.stuck ? ' <span style="color:var(--amber)">· ' + d.daysInStage + 'd</span>' : '') + '</div>' +
     '<div class="addr">' + esc(d.address) + '</div><div class="city">' + esc([d.city, [d.state, d.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ')) + (d.market ? ' · ' + esc(d.market) : '') + '</div></div>' +
     '<div class="nums"><div><div class="l">Price</div><div class="v">' + short$(d.askingPrice) + '</div></div><div><div class="l">ARV</div><div class="v">' + short$(d.arv) + '</div></div>' +
     '<div><div class="l">Repairs</div><div class="v">' + short$(d.repairs) + '</div></div><div><div class="l">Spread</div><div class="v" style="color:var(--accent-2)">' + short$(m.spread) + '</div></div></div>' +
     '<div class="meta"><span>' + (isNum(d.beds) ? d.beds : '–') + ' bd / ' + (isNum(d.baths) ? d.baths : '–') + ' ba</span><span>' + (isNum(d.sqft) ? fmtNum(d.sqft) + ' sf' : '— sf') + '</span>' +
     '<span>' + d.photoIds.length + ' photos</span><span>' + (d.timesDistributed ? '✓ Sent to ' + d.totalRecipients : 'Not distributed') + '</span><span>' + d.interested + ' interested</span></div>' +
-    '<div class="actions">' + (d.status !== 'Sold' ? '<button class="btn-send" data-act="distribute" data-id="' + esc(d.id) + '">' + icon('send') + 'Send to Investor Network</button>' : '') +
+    '<div class="actions">' + (!['Sold', 'Dead'].includes(d.status) ? '<button class="btn-send" data-act="distribute" data-id="' + esc(d.id) + '">' + icon('send') + 'Send to Investor Network</button>' : '') +
     '<button class="btn sm ghost" data-go="dealForm" data-id="' + esc(d.id) + '" title="Edit">' + icon('edit') + '</button>' +
     '<button class="btn sm ghost" data-go="deal" data-id="' + esc(d.id) + '" title="Tracking">' + icon('eye') + '</button></div></div>';
 }
@@ -567,6 +593,13 @@ VIEWS.dealForm = {
       '<div class="card"><div class="hd"><h3>Description & Access</h3></div><div class="bd stack">' +
       field('Deal description', area('description', f.description, 'rows="6" placeholder="Highlights, condition, rehab scope, rent comps, neighborhood…"'), 'Shown in the investor email. Blank lines create paragraphs.') +
       field('Access instructions', area('access', f.access, 'rows="3" placeholder="Open house Saturday 10am–12pm. Call to schedule a walkthrough."'), chk('showAccess', f.showAccess, 'Include in investor email') + ' &nbsp;— do not put lockbox codes here if this is included; use Internal notes.') +
+      '</div></div>' +
+      '<div class="card"><div class="hd"><h3>Land, Pipeline & Deadlines</h3></div><div class="bd grid g3">' +
+      field('Acreage', inp('acres', f.acres, 'number', 'min="0" step="0.01" placeholder="2"'), 'Used for land matching') + field('Parcel ID', inp('parcelId', f.parcelId)) + field('Zoning', inp('zoning', f.zoning, 'text', 'placeholder="R-1"')) +
+      field('Contract price (seller)', moneyInp('contractPrice', f.contractPrice), 'Private. Used to calculate your assignment fee on each offer.') +
+      field('Offer deadline', inp('offerDeadline', f.offerDeadline ? String(f.offerDeadline).replace(' ', 'T').slice(0, 16) : '', 'datetime-local'), 'Buyers get a reminder 24h before') +
+      field('Disposition rep', repSelect(f.rep)) +
+      '</div><div class="bd stack" style="padding-top:0">' +
       field('Internal notes', area('internalNotes', f.internalNotes, 'rows="2" placeholder="Seller info, lockbox code, title company… (never emailed)"'), 'Private — never sent to investors.') +
       '</div></div></div>' +
 
@@ -736,7 +769,7 @@ VIEWS.deal = {
     const m = d.metrics || {};
     const t = S.tracking;
     const recips = t ? t.recipients.filter(r => S.showTest || r.mode === 'LIVE') : [];
-    const tabs = [['recipients', 'Recipients', t ? t.recipients.filter(r => r.mode === 'LIVE' && r.status === 'Sent').length : '…'], ['responses', 'Responses', t ? t.responses.length : '…'], ['jobs', 'Distributions', t ? t.jobs.length : '…'], ['photos', 'Photos', d.photoIds.length], ['preview', 'Email Preview', '']];
+    const tabs = [['matches', 'Matches', S.dealMatches ? S.dealMatches.counts.strong + S.dealMatches.counts.good : '…'], ['offers', 'Offers', S.dealOffers ? S.dealOffers.length : '…'], ['recipients', 'Recipients', t ? t.recipients.filter(r => r.mode === 'LIVE' && r.status === 'Sent').length : '…'], ['responses', 'Responses', t ? t.responses.length : '…'], ['jobs', 'Distributions', t ? t.jobs.length : '…'], ['photos', 'Photos', d.photoIds.length], ['preview', 'Email Preview', '']];
     let body = '';
     if (!t) body = '<div class="loading"><span class="spinner"></span> Loading tracking…</div>';
     else if (S.trackTab === 'recipients') {
@@ -751,6 +784,10 @@ VIEWS.deal = {
       body = jobsTable(t.jobs, false);
     } else if (S.trackTab === 'photos') {
       body = '<div class="photos" id="detailPhotos"><div class="loading small"><span class="spinner"></span></div></div>';
+    } else if (S.trackTab === 'matches') {
+      body = S.dealMatches ? '<div class="row" style="margin-bottom:12px"><span class="muted small">Buyers ranked by how well this deal fits their buy box and buying history.</span><div style="flex:1"></div><button class="btn-send sm" data-act="distribute" data-id="' + esc(d.id) + '">' + icon('send') + 'Send to matches</button></div>' + matchTable(S.dealMatches.matches.filter(m => m.fit !== 'no'), true) : '<div class="loading"><span class="spinner"></span> Matching buyers…</div>';
+    } else if (S.trackTab === 'offers') {
+      body = S.dealOffers ? offerCompare(d, S.dealOffers) : '<div class="loading"><span class="spinner"></span> Loading offers…</div>';
     } else if (S.trackTab === 'preview') {
       body = '<div class="row" style="margin-bottom:12px"><input type="email" id="testTo" value="' + esc(S.settings.values.TEST_EMAIL) + '" style="max-width:280px"><button class="btn sm" data-act="sendTest" data-id="' + esc(d.id) + '">' + icon('mail') + 'Send test email</button></div><iframe class="preview-frame" id="previewFrame"></iframe>';
     }
@@ -758,7 +795,8 @@ VIEWS.deal = {
       '<div class="row" style="justify-content:space-between;align-items:flex-start"><div><div class="small" style="letter-spacing:2px;color:var(--accent-soft);text-transform:uppercase">' + esc(d.id) + (d.propertyType ? ' · ' + esc(d.propertyType) : '') + (d.market ? ' · ' + esc(d.market) : '') + '</div>' +
       '<div style="font-family:var(--serif);font-size:34px;font-weight:600;margin-top:6px;line-height:1.1">' + esc(d.address) + '</div><div class="muted">' + esc([d.city, [d.state, d.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ')) + '</div></div>' +
       '<div class="row">' + statusPill(d.status) + '</div></div>' +
-      '<div class="row" style="margin-top:18px">' + (d.status !== 'Sold' ? '<button class="btn-send" data-act="distribute" data-id="' + esc(d.id) + '">' + icon('send') + 'Send to Investor Network</button>' : '') +
+      stageStepper(d) +
+      '<div class="row" style="margin-top:18px">' + (!['Sold', 'Dead'].includes(d.status) ? '<button class="btn-send" data-act="distribute" data-id="' + esc(d.id) + '">' + icon('send') + 'Send to Investor Network</button>' : '') +
       '<button class="btn" data-go="dealForm" data-id="' + esc(d.id) + '">' + icon('edit') + 'Edit Deal</button>' +
       '<div style="flex:1"></div><span class="small muted">Mark as:</span>' + L().dealStatuses.map(s => '<button class="btn sm' + (d.status === s ? ' primary' : '') + '" data-act="setStatus" data-id="' + esc(d.id) + '" data-val="' + s + '"' + (d.status === s ? ' disabled' : '') + '>' + s + '</button>').join('') + '</div></div>' +
       '<div class="metric-strip" style="border-radius:0;border-left:0;border-right:0;border-bottom:0">' +
@@ -776,6 +814,8 @@ VIEWS.deal = {
       return;
     }
     if (S.trackTab === 'preview') loadPreview(S.params.id, $('#previewFrame'));
+    if (S.trackTab === 'matches' && !S.dealMatches) api('matchBuyers', S.params.id).then(m => { S.dealMatches = m; if (S.view === 'deal') render(); }).catch(fail);
+    if (S.trackTab === 'offers' && !S.dealOffers) api('listOffers', S.params.id).then(o => { S.dealOffers = o; if (S.view === 'deal') render(); }).catch(fail);
     if (S.trackTab === 'photos') {
       api('getDealPhotoPreviews', S.params.id).then(p => {
         const el = $('#detailPhotos'); if (!el) return;
@@ -818,7 +858,7 @@ let DIST = null;
 function openDistribute(dealId) {
   const d = S.deals.find(x => x.id === dealId);
   if (!d) return;
-  DIST = { deal: d, step: 1, audience: { mode: 'all', tiers: [], categories: [], markets: [], investorIds: [], matchCriteria: false, excludeAlreadySent: d.timesDistributed > 0 }, preview: null, prepared: null, pickQ: '' };
+  DIST = { deal: d, step: 1, audience: { mode: 'smart', waves: true, includeOthers: false, minScore: +S.settings.values.MATCH_MIN_SCORE || 50, tiers: [], categories: [], markets: [], investorIds: [], matchCriteria: false, excludeAlreadySent: d.timesDistributed > 0 }, preview: null, prepared: null, pickQ: '' };
   renderDist();
 }
 function renderDist() {
@@ -829,12 +869,17 @@ function renderDist() {
   if (DIST.step === 1) {
     const opt = (m, t, s) => '<div class="option' + (a.mode === m ? ' on' : '') + '" data-act="distMode" data-val="' + m + '"><b>' + t + '</b><span>' + s + '</span></div>';
     body += '<div class="grid" style="grid-template-columns:1.25fr 1fr;align-items:start"><div class="stack">' +
-      '<div class="grid g3">' + opt('all', 'All active investors', 'Everyone active & subscribed') + opt('segments', 'By tier / category', 'Target investor segments') + opt('selected', 'Hand-pick', 'Choose specific investors') + '</div>';
+      '<div class="grid g4">' + opt('smart', 'Smart match ★', 'Buyers whose buy box fits, Tier 1 first') + opt('all', 'All active investors', 'Everyone active & subscribed') + opt('segments', 'By tier / category', 'Target investor segments') + opt('selected', 'Hand-pick', 'Choose specific investors') + '</div>';
     if (a.mode === 'segments') {
       body += '<div><div class="section-title">Tiers</div>' + chips('d_tiers', L().tiers, a.tiers) + '</div>' +
         '<div><div class="section-title">Categories</div>' + chips('d_categories', L().categories, a.categories) + '</div>' +
         (L().markets.length ? '<div><div class="section-title">Markets</div>' + chips('d_markets', L().markets, a.markets) + '</div>' : '') +
         '<div class="small muted">Within a group any selected value matches; across groups all must match. Leave a group empty to include everyone.</div>';
+    }
+    if (a.mode === 'smart') {
+      body += '<div class="grid g2" style="align-items:end">' + field('Minimum match score', '<input type="number" min="0" max="100" data-change="distNum" name="minScore" value="' + esc(a.minScore) + '">', 'Strong ≥ 70') + '<div></div></div>' +
+        '<label class="check"><input type="checkbox" data-change="distOpt" name="waves"' + (a.waves ? ' checked' : '') + '> Priority waves: top-tier matches now, other matches ' + esc(S.settings.values.WAVE2_DELAY_HOURS) + 'h later</label>' +
+        '<label class="check"><input type="checkbox" data-change="distOpt" name="includeOthers"' + (a.includeOthers ? ' checked' : '') + '> Then everyone else (' + esc(S.settings.values.WAVE3_DELAY_HOURS) + 'h later)</label>';
     }
     if (a.mode === 'selected') {
       const q = lc(DIST.pickQ);
@@ -844,7 +889,7 @@ function renderDist() {
         (act.length ? '' : '<div class="empty" style="padding:20px">No active investors match.</div>') + '</div><div class="row"><button class="btn sm" data-act="pickAll">Select all shown</button><button class="btn sm ghost" data-act="pickNone">Clear</button><span class="small muted">' + a.investorIds.length + ' selected</span></div>';
     }
     body += '<div class="stack" style="padding-top:6px">' +
-      '<label class="check"><input type="checkbox" data-change="distOpt" name="matchCriteria"' + (a.matchCriteria ? ' checked' : '') + '> Only investors whose buying criteria match this deal (property type, price range, markets)</label>' +
+      (a.mode === 'smart' ? '' : '<label class="check"><input type="checkbox" data-change="distOpt" name="matchCriteria"' + (a.matchCriteria ? ' checked' : '') + '> Only investors whose buying criteria match this deal (property type, price range, markets)</label>') +
       '<label class="check"><input type="checkbox" data-change="distOpt" name="excludeAlreadySent"' + (a.excludeAlreadySent ? ' checked' : '') + '> Skip investors who already received this deal' + (d.timesDistributed ? ' (sent ' + d.timesDistributed + '× before)' : '') + '</label></div>' +
       '</div><div class="card"><div class="bd" id="audienceBox"><div class="loading"><span class="spinner"></span></div></div></div></div>';
     foot = '<button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn primary" data-act="distNext" id="distNext">Next: Preview Email →</button>';
@@ -857,7 +902,7 @@ function renderDist() {
     const p = DIST.prepared;
     const ex = p.excluded, exList = Object.keys(ex).filter(k => ex[k]).map(k => ex[k] + ' ' + ({ inactive: 'inactive', optedOut: 'opted out', invalidEmail: 'invalid email', duplicate: 'duplicate email', notInSegment: 'outside segment', criteria: "criteria don't match", alreadySent: 'already received' })[k]);
     const summary = '<table class="t" style="margin:14px 0"><tbody>' +
-      [['Deal', esc(p.dealId) + ' · ' + esc(p.dealTitle) + (p.dealStatus !== 'Available' ? ' <span class="status st-' + esc(p.dealStatus) + '">' + esc(p.dealStatus) + '</span>' : '')], ['Audience', esc(p.audienceLabel)], ['Recipients', '<b>' + p.recipientCount + '</b> investors' + (exList.length ? ' <span class="muted small">(excluded: ' + esc(exList.join(', ')) + ')</span>' : '')],
+      [['Deal', esc(p.dealId) + ' · ' + esc(p.dealTitle) + (p.dealStatus !== 'Available' ? ' <span class="status st-' + esc(p.dealStatus) + '">' + esc(p.dealStatus) + '</span>' : '')], ['Audience', esc(p.audienceLabel) + (p.waves && (p.waves[1] || p.waves[2]) ? '<div class="small muted">Wave 1 now: ' + p.waves[0] + ' · Wave 2 in ' + p.waveDelays[1] + 'h: ' + p.waves[1] + (p.waves[2] ? ' · Wave 3 in ' + p.waveDelays[2] + 'h: ' + p.waves[2] : '') + '</div>' : '')], ['Recipients', '<b>' + p.recipientCount + '</b> investors' + (exList.length ? ' <span class="muted small">(excluded: ' + esc(exList.join(', ')) + ')</span>' : '')],
         ['Delivery', 'One individual email per investor · Reply-To ' + esc(S.settings.values.REPLY_TO || S.settings.user)], ['Daily email quota left', p.quota >= 0 ? p.quota.toLocaleString() + (p.quota < (p.mode === 'LIVE' ? p.recipientCount : p.testDeliveries) ? ' — <b style="color:var(--amber)">remaining emails will be queued and sent automatically when quota resets</b>' : '') : 'unknown']]
         .map(r => '<tr><td class="muted" style="width:200px">' + r[0] + '</td><td>' + r[1] + '</td></tr>').join('') + '</tbody></table>';
     if (p.mode === 'TEST') {
@@ -870,7 +915,7 @@ function renderDist() {
     }
   } else if (DIST.step === 4) {
     const j = DIST.job;
-    const done = j.queued === 0;
+    const done = j.queued === 0 || /^Wave/.test(j.status || '');
     const total = Number(j.total) || 1, sent = Number(j.sent) || 0, pct = Math.round(((sent + Number(j.failed || 0) + Number(j.simulated || 0)) / total) * 100);
     body += '<div style="text-align:center;padding:10px 0 20px">' + (done ? '<div style="font-size:42px;color:var(--accent-2)">✓</div>' : '<div class="spinner lg"></div>') +
       '<div style="font-family:var(--serif);font-size:28px;margin:10px 0">' + (done ? (j.mode === 'TEST' ? 'Test distribution complete' : 'Deal sent to your investor network') : 'Sending…') + '</div>' +
@@ -905,10 +950,11 @@ const refreshAudience = debounce(() => {
     if (!DIST || DIST.seq !== seq || !$('#audienceBox')) return;
     DIST.preview = p;
     const ex = p.excluded;
-    const exRows = [['inactive', 'Inactive'], ['optedOut', 'Opted out'], ['invalidEmail', 'Invalid email'], ['duplicate', 'Duplicate email'], ['notInSegment', 'Outside segment'], ['criteria', "Criteria don't match"], ['alreadySent', 'Already received']].filter(r => ex[r[0]]);
+    const exRows = [['notMatched', 'Not a match'], ['inactive', 'Inactive / pending review'], ['optedOut', 'Opted out'], ['invalidEmail', 'Invalid email'], ['duplicate', 'Duplicate email'], ['notInSegment', 'Outside segment'], ['criteria', "Criteria don't match"], ['alreadySent', 'Already received']].filter(r => ex[r[0]]);
     $('#audienceBox').innerHTML = '<div class="section-title">Will receive this deal</div><div class="count-big">' + p.count + '</div><div class="muted" style="margin:4px 0 14px">investors · individual emails' + (p.testMode ? ' <span style="color:var(--amber)">(test mode)</span>' : '') + '</div>' +
       (exRows.length ? '<div class="small muted" style="margin-bottom:12px">' + exRows.map(r => r[1] + ': ' + ex[r[0]]).join(' · ') + '</div>' : '') +
-      '<div class="pick-list" style="max-height:260px">' + (p.recipients.slice(0, 200).map(r => '<label style="cursor:default"><span style="flex:1">' + esc(r.name) + '<div class="small muted">' + esc(r.email) + '</div></span><span class="tier">' + esc(r.tier) + '</span></label>').join('') || '<div class="empty" style="padding:20px">Nobody matches.</div>') +
+      (p.waves && (p.waves[1] || p.waves[2]) ? '<div class="small" style="margin-bottom:10px">Wave 1 now: <b>' + p.waves[0] + '</b> · Wave 2: <b>' + p.waves[1] + '</b>' + (p.waves[2] ? ' · Wave 3: <b>' + p.waves[2] + '</b>' : '') + '</div>' : '') +
+      '<div class="pick-list" style="max-height:260px">' + (p.recipients.slice(0, 200).map(r => '<label style="cursor:default">' + (r.score !== '' && r.score !== undefined ? scoreBadge(r.score) : '') + '<span style="flex:1">' + esc(r.name) + '<div class="small muted">' + esc(r.email) + (r.wave > 1 ? ' · wave ' + r.wave : '') + '</div></span><span class="tier">' + esc(r.tier) + '</span></label>').join('') || '<div class="empty" style="padding:20px">Nobody matches.</div>') +
       (p.recipients.length > 200 ? '<label class="muted small">…and ' + (p.recipients.length - 200) + ' more</label>' : '') + '</div>';
     const nx = $('#distNext'); if (nx) nx.disabled = !p.count;
   }).catch(fail);
@@ -927,10 +973,10 @@ async function distConfirm() {
   } catch (e) { fail(e); btn.disabled = false; btn.innerHTML = icon('send') + (p.mode === 'LIVE' ? 'Send to Investor Network' : 'Run Test Distribution'); }
 }
 function pollJob(id) {
-  if (!DIST || !DIST.job || DIST.job.queued === 0) return;
+  if (!DIST || !DIST.job || DIST.job.queued === 0 || /^Wave/.test(DIST.job.status || '')) return;
   setTimeout(() => {
     if (!DIST || DIST.step !== 4) return;
-    api('getJobStatus', id).then(j => { if (!DIST) return; DIST.job = j; renderDist(); if (j.queued > 0) pollJob(id); else refreshData(); }).catch(fail);
+    api('getJobStatus', id).then(j => { if (!DIST) return; DIST.job = j; renderDist(); if (j.queued > 0 && !/^Wave/.test(j.status)) pollJob(id); else refreshData(); }).catch(fail);
   }, 6000);
 }
 
@@ -997,6 +1043,12 @@ function investorModal(id) {
     field('Buying criteria', area('criteria', i.criteria, 'rows="2" placeholder="e.g. 3/2 SFR under $200K, light rehab, 70% rule, cash close in 14 days"')) +
     field('Mailing address', inp('mailingAddress', i.mailingAddress)) +
     (i.purchases ? '<div class="field"><label>Recent cash purchases (' + esc(i.purchaseCount) + ')</label><div class="small" style="line-height:1.6;color:var(--text-2)">' + esc(i.purchases) + '</div></div>' : '') +
+    '<div class="section-title" style="margin-top:8px">Buy box details</div>' +
+    '<div class="grid g4">' + field('Preferred zip codes', inp('zips', i.zips, 'text', 'placeholder="23434, 23435"')) + field('Min acreage', inp('minAcres', i.minAcres, 'number', 'min="0" step="0.01"')) + field('Max acreage', inp('maxAcres', i.maxAcres, 'number', 'min="0" step="0.01"')) +
+    field('Rehab or turnkey', sel('condition', i.condition, ['Rehab', 'Turnkey', 'Either'], '—')) + field('Funding', sel('funding', i.funding, ['Cash', 'Hard money', 'Private lender', 'Conventional', 'Other'], '—')) +
+    field('Preferred ROI %', inp('minRoi', i.minRoi, 'number', 'min="0" step="0.5"')) + field('Typical close (days)', inp('closeDays', i.closeDays, 'number', 'min="0"')) +
+    field('Last deal bought from us', '<div style="padding:9px 0" class="small">' + esc(i.lastDealBought || '—') + '</div>') + '</div>' +
+    (i.id ? '<div class="small muted">Proof of funds: <b style="color:var(--text)">' + esc(i.pofStatus || 'None') + '</b>' + (i.pofExpires ? ' (expires ' + esc(fmtDate(i.pofExpires)) + ')' : '') + ' · Closed with us: ' + (i.dealsClosed || 0) + ' · Defaults: ' + (i.defaults || 0) + (i.reliabilityScore ? ' · ' + stars(i.reliabilityScore) : '') + ' — manage in <a data-go="verification">Buyer Verification</a></div>' : '') +
     field('Notes', area('notes', i.notes, 'rows="2"')) +
     chk('optOut', i.optOut, 'Opted out of deal emails (never send)') + '</div></form>' +
     (id ? '<div style="margin-top:22px"><div class="section-title">History</div><div id="invHistory" class="small muted"><span class="spinner"></span></div></div>' : '');
@@ -1148,6 +1200,228 @@ async function intakeStatus(ids, status) {
   } catch (e) { fail(e); }
 }
 
+// ============================================================
+// PHASE 1: matching, pipeline, offers, verification, follow-ups
+// ============================================================
+const STAGES = ['Ready for Disposition', 'Distributed', 'Buyer Interested', 'Offer Received', 'Negotiating', 'Buyer Selected', 'Assignment Signed', 'EMD Received', 'Closing Scheduled', 'Closed', 'Dead Deal'];
+const OFFER_ST = ['Received', 'Countered', 'Accepted', 'Backup', 'Under Contract', 'Closed', 'Rejected', 'Withdrawn', 'Fell Through'];
+const repName = r => String(r || '').replace(/\s*<[^>]+>/, '');
+const stars = n => n ? '<span style="color:var(--amber);letter-spacing:1px" title="Reliability ' + n + '/5">' + '★'.repeat(n) + '<span style="color:var(--line-2)">' + '★'.repeat(5 - n) + '</span></span>' : '<span class="muted small">no history</span>';
+const scoreBadge = sc => { const c = sc >= 70 ? 'var(--accent-2)' : sc >= 50 ? 'var(--amber)' : 'var(--muted)'; return '<span style="display:inline-grid;place-items:center;min-width:36px;height:24px;border-radius:12px;border:1px solid ' + c + ';color:' + c + ';font-weight:700;font-size:12px;margin-right:8px">' + sc + '</span>'; };
+const pofChip = st => { const c = { Verified: 'var(--accent-2)', Expiring: 'var(--amber)', Expired: '#FF8A84', Pending: 'var(--blue)', None: 'var(--muted)', Provided: 'var(--blue)', Missing: '#FF8A84' }[st] || 'var(--muted)'; return '<span class="tag" style="color:' + c + ';border-color:' + c + '">' + esc(st) + '</span>'; };
+function repSelect(val) {
+  const reps = list(S.settings.values.REPS);
+  if (!reps.length) return inp('rep', val, 'text', 'placeholder="Rep name or email"');
+  return sel('rep', val, reps, '—');
+}
+function stageStepper(d) {
+  const idx = STAGES.indexOf(d.stage);
+  return '<div style="display:flex;gap:4px;margin-top:16px;flex-wrap:wrap">' + STAGES.map((st, i) => {
+    const on = i === idx, done = i < idx && d.stage !== 'Dead Deal', dead = st === 'Dead Deal';
+    const bg = on ? (dead ? 'rgba(217,83,79,.25)' : 'var(--accent)') : done ? 'var(--green-700)' : 'var(--panel-2)';
+    return '<a data-act="setStage" data-id="' + esc(d.id) + '" data-val="' + esc(st) + '" title="Move to ' + esc(st) + '" style="cursor:pointer;flex:1;min-width:86px;text-align:center;padding:7px 4px;border-radius:6px;font-size:10.5px;letter-spacing:.4px;background:' + bg + ';color:' + (on && !dead ? '#03140B' : on ? '#FF9A95' : done ? '#fff' : 'var(--muted)') + ';border:1px solid ' + (on ? 'transparent' : 'var(--line-2)') + ';font-weight:' + (on ? 700 : 500) + '">' + esc(st) + '</a>';
+  }).join('') + '</div>' + (d.stuck ? '<div class="small" style="color:var(--amber);margin-top:6px">⚠ ' + esc(d.stage) + ' for ' + d.daysInStage + ' days</div>' : '<div class="small muted" style="margin-top:6px">' + esc(d.stage) + ' · ' + d.daysInStage + ' day' + (d.daysInStage === 1 ? '' : 's') + ' in stage' + (d.rep ? ' · Rep: ' + esc(repName(d.rep)) : '') + '</div>');
+}
+function matchTable(rows, compact) {
+  if (!rows.length) return '<div class="card empty"><h4>No matching buyers</h4>No active buyer\'s buy box fits this deal. Add zip codes, markets and property types to buyer profiles, or approve buyers from New Buyers.</div>';
+  return '<div class="table-wrap"><table class="t"><thead><tr><th>Match</th><th>Buyer</th><th>Tier</th><th>Why</th><th>POF</th><th>Reliability</th></tr></thead><tbody>' +
+    rows.map(m => '<tr class="click" data-act="editInvestor" data-id="' + esc(m.id) + '"><td class="nowrap">' + scoreBadge(m.score) + '<span class="small" style="color:' + (m.fit === 'strong' ? 'var(--accent-2)' : m.fit === 'good' ? 'var(--amber)' : 'var(--muted)') + '">' + esc(m.fit === 'no' ? 'excluded' : m.fit) + '</span></td>' +
+      '<td><div style="font-weight:600">' + esc(m.name) + '</div><div class="small muted">' + esc(m.company && m.company !== m.name ? m.company + ' · ' : '') + esc(m.email) + '</div></td><td class="tier">' + esc(m.tier || '—') + '</td>' +
+      '<td class="small">' + (m.blockers.length ? '<span style="color:#FF9A95">' + esc(m.blockers.join(' · ')) + '</span>' : m.reasons.map(r => '<span class="tag">' + esc(r) + '</span>').join('')) + '</td>' +
+      '<td>' + pofChip(m.pofStatus) + '</td><td>' + stars(m.reliability) + '</td></tr>').join('') + '</tbody></table></div>';
+}
+function offerCompare(d, offers) {
+  const head = '<div class="row" style="margin-bottom:14px"><span class="muted small">Strongest offer first. Strength weighs your assignment fee, EMD, proof of funds, buyer reliability, closing speed and inspection period.</span><div style="flex:1"></div><button class="btn sm primary" data-act="newOffer" data-id="' + esc(d.id) + '">' + icon('plus') + 'Log offer</button></div>';
+  if (!offers.length) return head + '<div class="card empty"><h4>No offers yet</h4>Offers emailed by buyers (OFFER replies) appear here automatically.</div>';
+  const best = (o, k) => o.best && o.best.includes(k) ? ' style="color:var(--accent-2);font-weight:700"' : '';
+  return head + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px">' + offers.map((o, i) => {
+    const active = ['Received', 'Countered', 'Accepted', 'Backup', 'Under Contract'].includes(o.status);
+    return '<div class="card" style="' + (i === 0 && active ? 'border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)' : '') + (active ? '' : ';opacity:.55') + '"><div class="bd stack" style="gap:6px">' +
+      '<div class="row" style="justify-content:space-between">' + (active ? scoreBadge(o.strength) : '') + '<span class="tag">' + esc(o.status) + '</span></div>' +
+      (i === 0 && active ? '<div class="small" style="color:var(--accent-2);letter-spacing:1.5px;text-transform:uppercase">Strongest offer</div>' : '') +
+      '<div style="font-family:var(--serif);font-size:21px;font-weight:600">' + esc(o.investorName) + '</div><div class="small muted">' + esc(o.tier || '') + ' ' + stars(o.reliability) + (o.buyerDefaults ? ' <span style="color:#FF8A84">· ' + o.buyerDefaults + ' failed closing</span>' : '') + '</div>' +
+      '<table class="t" style="margin-top:6px"><tbody>' +
+      [['Offer', '<span' + best(o, 'amount') + '>' + money(o.amount) + '</span>'], ['Your assignment fee', o.fee === '' ? '—' : money(o.fee)], ['EMD', '<span' + best(o, 'emd') + '>' + (o.emd !== '' ? money(o.emd) : '—') + '</span>'],
+        ['Inspection', '<span' + best(o, 'insp') + '>' + (o.inspectionDays !== '' ? o.inspectionDays + ' days' : '—') + '</span>'], ['Closing', '<span' + best(o, 'close') + '>' + (o.closingDate ? fmtDate(o.closingDate) : '—') + '</span>'],
+        ['Financing', esc(o.financing || '—')], ['Proof of funds', pofChip(o.pofLabel)], ['Counter', o.counter !== '' ? money(o.counter) : '—']]
+        .map(r => '<tr><td class="muted small" style="padding:6px 0">' + r[0] + '</td><td class="right" style="padding:6px 0">' + r[1] + '</td></tr>').join('') + '</tbody></table>' +
+      (o.notes ? '<div class="small muted" style="max-height:48px;overflow:hidden" title="' + esc(o.notes) + '">' + esc(o.notes) + '</div>' : '') +
+      '<div class="row" style="margin-top:6px">' + (active && o.status !== 'Accepted' && o.status !== 'Under Contract' ? '<button class="btn sm primary" data-act="offerStatus" data-id="' + esc(o.id) + '" data-val="Accepted">Accept</button><button class="btn sm" data-act="offerCounter" data-id="' + esc(o.id) + '">Counter</button>' : '') +
+      (o.status === 'Accepted' ? '<button class="btn sm primary" data-act="offerStatus" data-id="' + esc(o.id) + '" data-val="Under Contract">Assignment signed</button>' : '') +
+      (['Accepted', 'Under Contract'].includes(o.status) ? '<button class="btn sm danger" data-act="offerStatus" data-id="' + esc(o.id) + '" data-val="Fell Through">Fell through</button>' : '') +
+      (active && !['Accepted', 'Under Contract'].includes(o.status) ? '<button class="btn sm ghost" data-act="offerStatus" data-id="' + esc(o.id) + '" data-val="Rejected">Reject</button>' : '') +
+      '<button class="btn sm ghost" data-act="editOffer" data-id="' + esc(o.id) + '" title="Edit">' + icon('edit') + '</button></div></div></div>';
+  }).join('') + '</div>';
+}
+function offerModal(dealId, o) {
+  o = o || {};
+  const d = S.deals.find(x => x.id === dealId) || {};
+  const invs = S.investors.slice().sort((a, b) => lc(a.firstName + a.lastName).localeCompare(lc(b.firstName + b.lastName)));
+  openModal((o.id ? 'Edit offer' : 'Log offer') + ' <span class="muted" style="font-size:16px;font-family:var(--sans)">· ' + esc(d.address || dealId) + '</span>',
+    '<form id="offerForm"><div class="grid g3">' +
+    field('Buyer *', sel('investorId', o.investorId || '', invs.map(i => [i.id, ((i.firstName + ' ' + i.lastName).trim() || i.company) + ' · ' + i.email]), 'Not in database (enter name)')) + field('Name (if not in database)', inp('investorName', o.investorId ? '' : o.investorName)) + field('Email', inp('investorEmail', o.investorId ? '' : o.investorEmail, 'email')) +
+    field('Offer amount *', moneyInp('amount', o.amount)) + field('Assignment fee', moneyInp('assignmentFee', o.assignmentFee), d.contractPrice ? 'Blank = offer − contract price (' + money(d.contractPrice) + ')' : 'Add the contract price on the deal to calculate') + field('EMD', moneyInp('emd', o.emd)) +
+    field('Inspection period (days)', inp('inspectionDays', o.inspectionDays, 'number', 'min="0"')) + field('Proposed closing date', inp('closingDate', o.closingDate, 'date')) + field('Financing', sel('financing', o.financing, ['Cash', 'Hard money', 'Private lender', 'Conventional', 'Other'], '—')) +
+    field('Proof of funds', sel('pof', o.pof, ['Provided', 'Missing'], 'Use buyer\'s verification status')) + '</div><div style="margin-top:12px">' + field('Notes', area('notes', o.notes, 'rows="2"')) + '</div></form>',
+    '<button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn primary" data-act="saveOffer" data-id="' + esc(o.id || '') + '" data-deal="' + esc(dealId) + '">Save offer</button>');
+}
+async function afterOfferChange(dealId, cmp) {
+  if (cmp && cmp.offers) S.dealOffers = cmp.offers; else S.dealOffers = null;
+  S.offersAll = null; S.pipe = null;
+  if (cmp && cmp.deal) replaceDeal(cmp.deal); else { try { replaceDeal(await api('getDeal', dealId)); } catch (e) { /* ignore */ } }
+  render();
+}
+
+// ---------- Disposition pipeline board ----------
+VIEWS.pipeline = {
+  html() {
+    if (!S.pipe) return '<div class="loading"><span class="spinner"></span> Loading pipeline…</div>';
+    const deals = S.pipe.deals;
+    const showDone = S.pipeShowDone;
+    const cols = STAGES.filter(st => showDone || !['Closed', 'Dead Deal'].includes(st));
+    return '<div class="toolbar"><span class="muted">Every deal and exactly where it stands. Click a deal to open it; use the menu on a card to move it.</span><div style="flex:1"></div><label class="check"><input type="checkbox" data-change="pipeDone"' + (showDone ? ' checked' : '') + '> Show closed & dead</label><button class="btn primary" data-go="dealForm">' + icon('plus') + 'Submit Deal</button></div>' +
+      '<div style="display:flex;gap:12px;overflow-x:auto;padding-bottom:12px">' + cols.map(st => {
+        const ds = deals.filter(d => d.stage === st);
+        return '<div style="min-width:230px;max-width:230px;flex:none"><div class="row" style="justify-content:space-between;margin-bottom:8px"><span class="section-title" style="margin:0">' + esc(st) + '</span><span class="tag">' + ds.length + '</span></div>' +
+          ds.map(d => '<div class="card" style="margin-bottom:8px;' + (d.stuck ? 'border-color:rgba(232,181,58,.5)' : '') + '"><div class="bd" style="padding:12px 14px">' +
+            '<div data-go="deal" data-id="' + esc(d.id) + '" style="cursor:pointer"><div style="font-family:var(--serif);font-size:17px;font-weight:600;line-height:1.15">' + esc(d.address) + '</div><div class="small muted">' + esc(d.id) + ' · ' + esc(d.city || '') + '</div>' +
+            '<div class="small" style="margin-top:6px">' + money(d.askingPrice) + (d.offers.active ? ' · <b style="color:var(--accent-2)">' + d.offers.active + ' offer' + (d.offers.active > 1 ? 's' : '') + '</b> (best ' + short$(d.offers.best) + ')' : '') + '</div>' +
+            (d.buyer ? '<div class="small muted">Buyer: ' + esc(d.buyer) + '</div>' : '') + (d.closingDate && ['Buyer Selected', 'Assignment Signed', 'EMD Received', 'Closing Scheduled'].includes(d.stage) ? '<div class="small muted">Closing ' + fmtDate(d.closingDate) + '</div>' : '') +
+            '<div class="small" style="margin-top:4px;color:' + (d.stuck ? 'var(--amber)' : 'var(--muted)') + '">' + (d.stuck ? '⚠ ' : '') + d.daysInStage + 'd in stage' + (d.rep ? ' · ' + esc(repName(d.rep)) : '') + '</div></div>' +
+            '<select data-change="stageSelect" data-id="' + esc(d.id) + '" style="margin-top:8px;padding:5px 26px 5px 8px;font-size:12px">' + STAGES.map(x => '<option' + (x === d.stage ? ' selected' : '') + '>' + esc(x) + '</option>').join('') + '</select></div></div>').join('') +
+          (ds.length ? '' : '<div class="small muted" style="padding:14px;border:1px dashed var(--line-2);border-radius:8px;text-align:center">—</div>') + '</div>';
+      }).join('') + '</div>';
+  },
+  mount() { if (!S.pipe) api('getPipeline').then(p => { S.pipe = p; if (S.view === 'pipeline') render(); }).catch(fail); }
+};
+
+// ---------- Contract & closing tracker ----------
+VIEWS.closing = {
+  html() {
+    if (!S.pipe) return '<div class="loading"><span class="spinner"></span> Loading…</div>';
+    const rows = S.pipe.deals.filter(d => ['Buyer Selected', 'Assignment Signed', 'EMD Received', 'Closing Scheduled'].includes(d.stage))
+      .sort((a, b) => String(a.closingDate || '9').localeCompare(String(b.closingDate || '9')));
+    const closed = S.pipe.deals.filter(d => d.stage === 'Closed');
+    const fee = closed.reduce((t, d) => t + ((+d.soldPrice || 0) - (+d.contractPrice || 0) > 0 && d.contractPrice ? (+d.soldPrice - +d.contractPrice) : 0), 0);
+    const daysTo = d => { const c = toDate(d.closingDate); return c ? Math.ceil((c - Date.now()) / 86400000) : null; };
+    return '<div class="grid g4" style="margin-bottom:18px">' + kpi('Under contract', rows.length, 'buyer selected → closing') + kpi('Closing in 7 days', rows.filter(d => { const n = daysTo(d); return n !== null && n <= 7; }).length, 'needs attention') +
+      kpi('EMD outstanding', rows.filter(d => ['Buyer Selected', 'Assignment Signed'].includes(d.stage)).length, 'buyer selected, EMD not in') + kpi('Closed', closed.length, fee ? money(fee) + ' in assignment fees' : 'all time') + '</div>' +
+      (rows.length ? '<div class="table-wrap"><table class="t"><thead><tr><th>Deal</th><th>Buyer</th><th>Stage</th><th>Assignment signed</th><th>EMD</th><th>Closing</th><th>Rep</th><th></th></tr></thead><tbody>' +
+        rows.map(d => { const n = daysTo(d); const ix = STAGES.indexOf(d.stage);
+          return '<tr><td><a data-go="deal" data-id="' + esc(d.id) + '" style="cursor:pointer;font-weight:600">' + esc(d.address) + '</a><div class="small muted">' + esc(d.id) + '</div></td><td>' + esc(d.buyer || '—') + '</td><td><span class="tag">' + esc(d.stage) + '</span></td>' +
+            '<td class="small">' + (ix >= 6 ? '✓ ' + (d.assignmentSigned ? fmtDate(d.assignmentSigned) : '') : '<span style="color:var(--amber)">Pending</span>') + '</td>' +
+            '<td class="small">' + (d.emdAmount ? money(d.emdAmount) + ' ' : '') + (ix >= 7 ? '<span style="color:var(--accent-2)">✓ received</span>' : '<span style="color:var(--amber)">outstanding</span>') + '</td>' +
+            '<td class="nowrap">' + (d.closingDate ? fmtDate(d.closingDate) + '<div class="small" style="color:' + (n !== null && n <= 3 ? '#FF8A84' : n !== null && n <= 7 ? 'var(--amber)' : 'var(--muted)') + '">' + (n === null ? '' : n < 0 ? Math.abs(n) + ' days overdue' : n === 0 ? 'today' : 'in ' + n + ' days') + '</div>' : '<span class="muted">not set</span>') + '</td>' +
+            '<td class="small">' + esc(repName(d.rep) || '—') + '</td><td class="nowrap">' + (ix < 9 ? '<button class="btn sm primary" data-act="setStage" data-id="' + esc(d.id) + '" data-val="' + esc(STAGES[ix + 1]) + '">→ ' + esc(STAGES[ix + 1]) + '</button>' : '') + '</td></tr>'; }).join('') + '</tbody></table></div>'
+        : '<div class="card empty"><h4>Nothing under contract</h4>Accept an offer on a deal to start tracking the assignment, EMD and closing here.</div>');
+  },
+  mount() { if (!S.pipe) api('getPipeline').then(p => { S.pipe = p; if (S.view === 'closing') render(); }).catch(fail); }
+};
+
+// ---------- Smart buyer matching ----------
+VIEWS.matching = {
+  html() {
+    const deals = S.deals.filter(d => !['Sold', 'Dead'].includes(d.status));
+    if (!S.matchDeal && deals.length) S.matchDeal = deals[0].id;
+    const m = S.matchData;
+    let h = '<div class="toolbar"><select data-change="matchDeal" style="min-width:320px">' + deals.map(d => '<option value="' + esc(d.id) + '"' + (d.id === S.matchDeal ? ' selected' : '') + '>' + esc(d.id + ' · ' + d.address + (d.city ? ', ' + d.city : '')) + '</option>').join('') + '</select>' +
+      '<div style="flex:1"></div>' + (S.matchDeal ? '<button class="btn-send" data-act="distribute" data-id="' + esc(S.matchDeal) + '">' + icon('send') + 'Send to matched buyers</button>' : '') + '</div>';
+    if (!deals.length) return h + '<div class="card empty"><h4>No active deals</h4>Submit a deal to see which buyers fit it.</div>';
+    if (!m || m.deal.id !== S.matchDeal) return h + '<div class="loading"><span class="spinner"></span> Scoring buyers…</div>';
+    const d = m.deal;
+    h += '<div class="card" style="margin-bottom:16px"><div class="bd row" style="gap:22px"><div><div style="font-family:var(--serif);font-size:24px;font-weight:600">' + esc(d.address) + '</div><div class="muted small">' + esc([d.city, d.state, d.zip].filter(Boolean).join(', ')) + ' · ' + esc(d.propertyType || '') + (m.land ? ' · ' + (m.acres ? m.acres + ' acres' : 'land') : '') + ' · ' + money(d.askingPrice) + '</div></div><div style="flex:1"></div>' +
+      [['Strong', m.counts.strong, 'var(--accent-2)'], ['Good', m.counts.good, 'var(--amber)'], ['Weak', m.counts.weak, 'var(--muted)'], ['Excluded', m.counts.no, '#FF8A84']].map(x => '<div style="text-align:center"><div style="font-family:var(--serif);font-size:30px;color:' + x[2] + '">' + x[1] + '</div><div class="small muted">' + x[0] + '</div></div>').join('') + '</div></div>' +
+      (m.pendingReview ? '<div class="small muted" style="margin-bottom:10px">' + m.pendingReview + ' new buyers are waiting in <a data-go="intake">New Buyers</a> and aren\'t matched until approved.</div>' : '');
+    const tab = S.matchTab || 'matched';
+    h += '<div class="tabs">' + [['matched', 'Matches', m.counts.strong + m.counts.good], ['weak', 'Weak fit', m.counts.weak], ['no', 'Excluded', m.counts.no]].map(x => '<a class="' + (tab === x[0] ? 'on' : '') + '" data-act="matchTab" data-val="' + x[0] + '">' + x[1] + '<span class="n">' + x[2] + '</span></a>').join('') + '</div>';
+    const rows = m.matches.filter(x => tab === 'matched' ? ['strong', 'good'].includes(x.fit) : x.fit === tab);
+    return h + matchTable(rows);
+  },
+  mount() { if (S.matchDeal && (!S.matchData || S.matchData.deal.id !== S.matchDeal)) api('matchBuyers', S.matchDeal).then(m => { S.matchData = m; if (S.view === 'matching') render(); }).catch(fail); }
+};
+
+// ---------- Offers & negotiations ----------
+VIEWS.offers = {
+  html() {
+    if (!S.offersAll) return '<div class="loading"><span class="spinner"></span> Loading offers…</div>';
+    const f = S.offerFilter;
+    const rows = S.offersAll.filter(o => (!f.deal || o.dealId === f.deal) && (f.status === 'all' || (f.status === 'active' ? ['Received', 'Countered', 'Accepted', 'Backup', 'Under Contract'].includes(o.status) : o.status === f.status)));
+    const dealIds = [...new Set(S.offersAll.map(o => o.dealId))];
+    const act = S.offersAll.filter(o => ['Received', 'Countered', 'Accepted', 'Backup', 'Under Contract'].includes(o.status));
+    return '<div class="grid g4" style="margin-bottom:18px">' + kpi('Open offers', act.length, dealIds.length + ' deals') + kpi('Need proof of funds', act.filter(o => o.pofLabel !== 'Verified').length, 'follow-ups chase these') +
+      kpi('Avg offers / deal', dealIds.length ? (S.offersAll.length / dealIds.length).toFixed(1) : '0', 'all offers') + kpi('Accepted / under contract', S.offersAll.filter(o => ['Accepted', 'Under Contract'].includes(o.status)).length, '') + '</div>' +
+      '<div class="toolbar"><select data-change="offerFilter" name="deal"><option value="">All deals</option>' + dealIds.map(id => { const d = S.deals.find(x => x.id === id); return '<option value="' + esc(id) + '"' + (f.deal === id ? ' selected' : '') + '>' + esc(id + (d ? ' · ' + d.address : '')) + '</option>'; }).join('') + '</select>' +
+      '<select data-change="offerFilter" name="status">' + [['active', 'Open offers'], ['all', 'All statuses']].concat(OFFER_ST.map(x => [x, x])).map(o => '<option value="' + o[0] + '"' + (f.status === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>' +
+      '<div style="flex:1"></div>' + (f.deal ? '<button class="btn" data-go="deal" data-id="' + esc(f.deal) + '" data-tab="offers">Compare side by side →</button>' : '<span class="small muted">Pick a deal to compare its offers side by side</span>') + '</div>' +
+      (rows.length ? '<div class="table-wrap"><table class="t"><thead><tr><th>Strength</th><th>Deal</th><th>Buyer</th><th>Offer</th><th>Fee</th><th>EMD</th><th>Inspection</th><th>Closing</th><th>POF</th><th>Status</th></tr></thead><tbody>' +
+        rows.map(o => '<tr class="click" data-go="deal" data-id="' + esc(o.dealId) + '" data-tab="offers"><td>' + (o.strength ? scoreBadge(o.strength) : '—') + '</td><td>' + esc(o.property) + '<div class="small muted">' + esc(o.dealId) + '</div></td><td>' + esc(o.investorName) + '<div class="small muted">' + fmtDT(o.received) + ' · ' + esc(o.source) + '</div></td>' +
+          '<td class="nowrap"><b>' + money(o.amount) + '</b></td><td class="nowrap">' + (o.fee === '' ? '—' : money(o.fee)) + '</td><td class="nowrap">' + (o.emd !== '' ? money(o.emd) : '—') + '</td><td>' + (o.inspectionDays !== '' ? o.inspectionDays + 'd' : '—') + '</td><td class="nowrap">' + (o.closingDate ? fmtDate(o.closingDate) : '—') + '</td><td>' + pofChip(o.pofLabel) + '</td><td><span class="tag">' + esc(o.status) + '</span></td></tr>').join('') + '</tbody></table></div>'
+        : '<div class="card empty"><h4>No offers here</h4>Offers emailed by buyers are captured automatically when the inbox is scanned. You can also log one from a deal\'s Offers tab.</div>');
+  },
+  mount() { if (!S.offersAll) api('listOffers', '').then(o => { S.offersAll = o; if (S.view === 'offers') render(); }).catch(fail); }
+};
+
+// ---------- Buyer verification center ----------
+VIEWS.verification = {
+  html() {
+    if (!S.ver) return '<div class="loading"><span class="spinner"></span> Loading buyers…</div>';
+    const v = S.ver, f = S.verFilter, sm = v.summary;
+    const rows = v.buyers.filter(b => f === 'all' ? true : f === 'flagged' ? b.flags.length : f === 'verified' ? ['Verified', 'Expiring'].includes(b.pofStatus) : b.pofStatus === f)
+      .sort((a, b) => b.flags.length - a.flags.length || (b.activeOffers || 0) - (a.activeOffers || 0));
+    return '<div class="grid g4" style="margin-bottom:18px">' + kpi('POF verified', sm.verified, sm.expiring + ' expiring soon') + kpi('POF expired', sm.expired, sm.pending + ' waiting for verification') + kpi('Offers without POF', sm.offersNoPof, 'buyers with open offers') + kpi('Failed closings', sm.defaults, 'buyers with contract defaults') + '</div>' +
+      '<div class="tabs">' + [['flagged', 'Needs attention'], ['Pending', 'To verify'], ['Expired', 'Expired'], ['verified', 'Verified'], ['None', 'No POF'], ['all', 'All buyers']].map(x => '<a class="' + (f === x[0] ? 'on' : '') + '" data-act="verTab" data-val="' + x[0] + '">' + x[1] + '</a>').join('') + '</div>' +
+      (rows.length ? '<div class="table-wrap"><table class="t"><thead><tr><th>Buyer / entity</th><th>Contact</th><th>Proof of funds</th><th>History</th><th>Reliability</th><th>Flags</th><th></th></tr></thead><tbody>' +
+        rows.map(b => '<tr><td><div style="font-weight:600">' + esc((b.firstName + ' ' + b.lastName).trim() || b.company) + '</div><div class="small muted">' + esc(b.company || '') + ' · <span class="tier">' + esc(b.tier || '') + '</span></div></td>' +
+          '<td class="small">' + esc(b.email || '—') + '<div class="muted">' + esc(b.phone || '') + '</div></td>' +
+          '<td>' + pofChip(b.pofStatus) + (b.pofAmount ? '<div class="small">' + money(b.pofAmount) + '</div>' : '') + (b.pofExpires ? '<div class="small muted">exp ' + fmtDate(b.pofExpires) + '</div>' : '') + (b.pofFileUrl ? '<a class="small" href="' + esc(b.pofFileUrl) + '" target="_blank">View file ↗</a>' : '') + '</td>' +
+          '<td class="small" style="min-width:150px">' + (b.dealsClosed || 0) + ' closed with us · ' + (b.purchaseCount || 0) + ' public purchases' + (b.lastDealBought ? '<div class="muted">Last: ' + esc(b.lastDealBought) + '</div>' : '') + (b.activeOffers ? '<div style="color:var(--accent-2)">' + b.activeOffers + ' open offer(s)</div>' : '') + '</td>' +
+          '<td>' + stars(b.reliabilityScore) + '<div><select data-change="rating" data-id="' + esc(b.id) + '" style="padding:3px 22px 3px 6px;font-size:11px;width:auto;margin-top:4px"><option value="">Auto</option>' + [5, 4, 3, 2, 1].map(n => '<option value="' + n + '"' + (+b.reliability === n ? ' selected' : '') + '>' + n + '★ (manual)</option>').join('') + '</select></div></td>' +
+          '<td class="small" style="min-width:170px">' + (b.flags.length ? b.flags.map(x => '<div style="color:' + (/expired|failed|without/i.test(x) ? '#FF8A84' : 'var(--amber)') + '">⚑ ' + esc(x) + '</div>').join('') : '<span class="muted">—</span>') + '</td>' +
+          '<td><div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;min-width:170px"><button class="btn sm" data-act="pofUpload" data-id="' + esc(b.id) + '">Upload POF</button>' + (b.pofStatus !== 'Verified' ? '<button class="btn sm primary" data-act="pofVerify" data-id="' + esc(b.id) + '">Verify</button>' : '<span></span>') +
+          '<button class="btn sm ghost" data-act="outcome" data-id="' + esc(b.id) + '" data-val="closed" title="Record a completed transaction">+ Closed</button><button class="btn sm ghost" data-act="outcome" data-id="' + esc(b.id) + '" data-val="default" title="Record a failed closing" style="color:#FF9A95">+ Default</button></div></td></tr>').join('') + '</tbody></table></div>'
+        : '<div class="card empty"><h4>Nothing here</h4>No buyers in this view.</div>') + '<input type="file" id="pofInput" class="hidden" accept="image/*,application/pdf">';
+  },
+  mount() {
+    if (!S.ver) api('getVerificationCenter').then(v => { S.ver = v; if (S.view === 'verification') render(); }).catch(fail);
+    const fi = $('#pofInput');
+    if (fi) fi.addEventListener('change', () => { const file = fi.files[0]; if (file) pofUploadFile(S.pofFor, file); fi.value = ''; });
+  }
+};
+function pofUploadFile(id, file) {
+  if (file.size > 20 * 1024 * 1024) return toast('That file is over 20 MB.', 'warn');
+  const r = new FileReader();
+  r.onload = async () => {
+    const amount = window.prompt ? (prompt('Proof of funds amount (optional):', '') || '') : '';
+    toast('Uploading proof of funds…');
+    try { await api('uploadPof', id, file.name, file.type || 'application/pdf', r.result, amount, ''); S.ver = null; S.investors = await api('listInvestors'); toast('POF uploaded — click Verify once reviewed.'); render(); } catch (e) { fail(e); }
+  };
+  r.readAsDataURL(file);
+}
+
+// ---------- Follow-up center ----------
+VIEWS.followups = {
+  html() {
+    if (!S.fu) return '<div class="loading"><span class="spinner"></span> Checking who needs a follow-up…</div>';
+    const fu = S.fu;
+    const buyer = fu.due.filter(x => x.kind === 'buyer'), rep = fu.due.filter(x => x.kind === 'rep');
+    return '<div class="card" style="margin-bottom:18px"><div class="bd row" style="gap:14px"><div style="flex:1;min-width:260px"><div style="font-family:var(--serif);font-size:22px">Automatic follow-ups</div><div class="small muted">' +
+      (fu.scheduled ? 'Running every 2 hours, 8 AM–8 PM. ' : 'Not scheduled yet. ') + 'Each reminder goes out once, individually; opted-out buyers are never contacted' + (S.settings.testMode ? '; <b style="color:var(--amber)">test mode: buyer emails go to your test address</b>' : '') + '.' + (fu.lastRun ? ' Last run ' + ago(fu.lastRun) + '.' : '') + '</div></div>' +
+      (fu.scheduled ? '<button class="btn" data-act="fuToggle" data-val="off">Automatic: ON · turn off</button>' : '<button class="btn primary" data-act="fuToggle" data-val="on">Turn on automatic follow-ups</button>') +
+      '<button class="btn" data-act="fuRun">' + icon('send') + 'Send due follow-ups now (' + fu.due.length + ')</button></div></div>' +
+      '<div class="grid g2" style="align-items:start;margin-bottom:18px">' +
+      '<div class="card"><div class="hd"><h3>Due to buyers</h3><span class="tag" style="margin-left:auto">' + buyer.length + '</span></div>' + fuTable(buyer) + '</div>' +
+      '<div class="card"><div class="hd"><h3>Alerts for reps</h3><span class="tag" style="margin-left:auto">' + rep.length + '</span></div>' + fuTable(rep) + '</div></div>' +
+      '<div class="card"><div class="hd"><h3>History</h3></div>' + (fu.history.length ? '<div style="max-height:420px;overflow:auto"><table class="t"><thead><tr><th>Sent</th><th>Type</th><th>Deal</th><th>Buyer</th><th>To</th><th>Status</th></tr></thead><tbody>' +
+        fu.history.map(hh => '<tr><td class="nowrap small">' + fmtDT(hh.sentAt) + '</td><td class="small">' + esc(hh.type) + '<div class="muted">' + esc(hh.channel) + '</div></td><td class="small">' + esc(hh.property) + '</td><td class="small">' + esc(hh.investorName || '—') + '</td><td class="small">' + esc(hh.to) + '</td><td class="small">' + esc(hh.status) + '</td></tr>').join('') + '</tbody></table></div>'
+        : '<div class="empty" style="padding:30px">No follow-ups sent yet.</div>') + '</div>';
+  },
+  mount() { if (!S.fu) api('getFollowUpCenter').then(f => { S.fu = f; S.fuDue = f.due.length; if (S.view === 'followups') render(); }).catch(fail); }
+};
+function fuTable(items) {
+  if (!items.length) return '<div class="empty" style="padding:26px">All caught up ✓</div>';
+  return '<div style="max-height:360px;overflow:auto"><table class="t"><tbody>' + items.map(i => '<tr><td><span class="tag">' + esc(i.typeLabel) + '</span></td><td><a data-go="deal" data-id="' + esc(i.dealId) + '" style="cursor:pointer">' + esc(i.property) + '</a><div class="small muted">' + esc(i.investorName ? i.investorName + ' · ' : '') + esc(i.detail) + '</div></td></tr>').join('') + '</tbody></table></div>';
+}
+
 // ---------- import ----------
 const IMPORT_LABELS = { fullName: 'Full name (split into first/last)', firstName: 'First name', lastName: 'Last name', company: 'Company', email: 'Email *', phone: 'Phone', tier: 'Tier', categories: 'Categories', markets: 'Preferred markets', propertyTypes: 'Property types', minPrice: 'Min price', maxPrice: 'Max price', criteria: 'Buying criteria', status: 'Status (active/inactive)', notes: 'Notes' };
 VIEWS.import = {
@@ -1232,6 +1506,10 @@ VIEWS.settings = {
       '</div><div class="stack">' +
       '<div class="card"><div class="hd"><h3>Email</h3></div><div class="bd stack"><div class="grid g2">' + f('SENDER_NAME', 'From name') + f('REPLY_TO', 'Reply-To address', 'email') + '</div>' + f('FROM_ALIAS', 'Send-as alias (optional)', 'email') + f('SUBJECT_TEMPLATE', 'Subject line') +
       '<div class="grid g3">' + f('EMAIL_PHOTO_COUNT', 'Photos in email', 'number') + f('SHARE_MEDIA_LINKS', 'Share gallery link', 'bool') + f('SHOW_ASSIGNMENT_DEFAULT', 'Show assignment price', 'bool') + '</div>' + f('DISCLAIMER', 'Disclaimer', 'area') + '</div></div>' +
+      '<div class="card"><div class="hd"><h3>Matching, Follow-Ups & Team</h3></div><div class="bd stack">' + f('REPS', 'Disposition reps', 'area') +
+      '<div class="grid g3">' + f('MATCH_MIN_SCORE', 'Min. match score', 'number') + f('WAVE2_DELAY_HOURS', 'Wave 2 delay (h)', 'number') + f('WAVE3_DELAY_HOURS', 'Wave 3 delay (h)', 'number') +
+      f('FU_NORESP_HOURS', 'No-response follow-up (h)', 'number') + f('FU_OFFER_HOURS', 'Offer reminder (h)', 'number') + f('FU_POF_HOURS', 'POF reminder (h)', 'number') +
+      f('FU_QUIET_DAYS', 'Buyer quiet alert (days)', 'number') + f('FU_CLOSING_DAYS', 'Closing reminder (days)', 'number') + f('FU_STUCK_DAYS', 'Stuck deal alert (days)', 'number') + f('POF_VALID_DAYS', 'POF valid for (days)', 'number') + '</div></div></div>' +
       '<div class="card"><div class="hd"><h3>Response Tracking</h3></div><div class="bd stack"><div class="muted small">Scans this Gmail inbox for investor replies to deal emails (matched by the deal ID in the subject), logs them as responses, and automatically opts out anyone who replies UNSUBSCRIBE.</div>' +
       f('RESPONSE_LOOKBACK_DAYS', 'Look back (days)', 'number') +
       '<div class="row">' + (st.autoTracking ? '<span class="tag" style="color:var(--accent-2)">Auto-tracking ON · every 15 min</span><button type="button" class="btn sm" data-act="autoTrack" data-val="off">Turn off</button>' : '<span class="tag">Auto-tracking off</span><button type="button" class="btn sm primary" data-act="autoTrack" data-val="on">Turn on</button>') +
@@ -1253,6 +1531,55 @@ VIEWS.settings = {
 // ============================================================
 const ACT = {
   closeModal,
+  setStage: async el => {
+    const id = el.dataset.id, st = el.dataset.val, d = S.deals.find(x => x.id === id) || {};
+    if (st === d.stage) return;
+    if (st === 'Closed' && !confirmSafe('Mark ' + (d.address || id) + ' as CLOSED? This records a completed transaction for the selected buyer.')) return;
+    if (st === 'Dead Deal' && !confirmSafe('Mark ' + (d.address || id) + ' as a DEAD deal? It will stop all distribution.')) return;
+    try { replaceDeal(await api('setDealStage', id, st, {})); S.pipe = null; toast(esc(d.address || id) + ' → <b>' + esc(st) + '</b>'); render(); } catch (e) { fail(e); }
+  },
+  matchTab: el => { S.matchTab = el.dataset.val; render(); },
+  newOffer: el => offerModal(el.dataset.id, null),
+  editOffer: el => { const o = (S.dealOffers || S.offersAll || []).find(x => x.id === el.dataset.id); if (o) offerModal(o.dealId, o); },
+  saveOffer: async el => {
+    const v = formData($('#offerForm')); v.dealId = el.dataset.deal; if (el.dataset.id) v.id = el.dataset.id;
+    try { await api('saveOffer', v); closeModal(); toast('Offer saved.'); await afterOfferChange(v.dealId, null); } catch (e) { fail(e); }
+  },
+  offerStatus: async el => {
+    const st = el.dataset.val;
+    const msg = { Accepted: 'Accept this offer? The buyer becomes the selected buyer; other open offers move to Backup.', 'Fell Through': 'Mark as fallen through? This records a failed closing on the buyer\'s profile and reopens the deal.', Rejected: 'Reject this offer?' }[st];
+    if (msg && !confirmSafe(msg)) return;
+    try { const c = await api('setOfferStatus', el.dataset.id, st, {}); toast('Offer ' + st.toLowerCase() + '.'); await afterOfferChange(c.deal.id, c); } catch (e) { fail(e); }
+  },
+  offerCounter: el => {
+    openModal('Counter offer', '<div class="grid g2" id="ctrForm">' + field('Counter amount', moneyInp('counter', '')) + '</div><p class="small muted">Records the counter on the offer and moves the deal to Negotiating. Send the counter to the buyer by email or phone.</p>',
+      '<button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn primary" data-act="saveCounter" data-id="' + esc(el.dataset.id) + '">Save counter</button>');
+  },
+  saveCounter: async el => {
+    const v = formData($('#ctrForm'));
+    try { const c = await api('setOfferStatus', el.dataset.id, 'Countered', { counter: v.counter }); closeModal(); toast('Counter recorded.'); await afterOfferChange(c.deal.id, c); } catch (e) { fail(e); }
+  },
+  verTab: el => { S.verFilter = el.dataset.val; render(); },
+  pofUpload: el => { S.pofFor = el.dataset.id; $('#pofInput').click(); },
+  pofVerify: el => {
+    const b = S.ver.buyers.find(x => x.id === el.dataset.id) || {};
+    openModal('Verify proof of funds', '<div class="grid g2" id="verForm">' + field('Verified amount', moneyInp('amount', b.pofAmount)) + field('Expires', inp('expires', '', 'date'), 'Blank = ' + esc(S.settings.values.POF_VALID_DAYS || 90) + ' days from today') + '</div>',
+      '<button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn primary" data-act="saveVerify" data-id="' + esc(el.dataset.id) + '">Mark verified</button>');
+  },
+  saveVerify: async el => {
+    const v = formData($('#verForm'));
+    try { await api('verifyPof', el.dataset.id, v.amount, v.expires); closeModal(); S.ver = null; S.investors = await api('listInvestors'); toast('Proof of funds verified.'); render(); } catch (e) { fail(e); }
+  },
+  outcome: async el => {
+    const def = el.dataset.val === 'default';
+    if (!confirmSafe(def ? 'Record a FAILED closing for this buyer? It lowers their reliability and match score.' : 'Record a completed transaction for this buyer?')) return;
+    try { await api('recordBuyerOutcome', el.dataset.id, el.dataset.val, '', ''); S.ver = null; S.investors = await api('listInvestors'); toast(def ? 'Failed closing recorded.' : 'Completed transaction recorded.'); render(); } catch (e) { fail(e); }
+  },
+  fuToggle: async el => { try { S.fu = await api(el.dataset.val === 'on' ? 'enableFollowUps' : 'disableFollowUps'); S.settings = await api('getSettings'); toast('Automatic follow-ups ' + (el.dataset.val === 'on' ? 'on' : 'off') + '.'); render(); } catch (e) { fail(e); } },
+  fuRun: async el => {
+    el.disabled = true; el.innerHTML = '<span class="spinner"></span> Sending…';
+    try { S.fu = await api('runFollowUpsNow'); S.fuDue = S.fu.due.length; toast('Sent ' + S.fu.run.sent + ' buyer follow-up' + (S.fu.run.sent === 1 ? '' : 's') + ' and ' + S.fu.run.alerts + ' rep alert' + (S.fu.run.alerts === 1 ? '' : 's') + '.'); render(); } catch (e) { fail(e); el.disabled = false; }
+  },
   intakeRun: async el => {
     const old = el.innerHTML; el.disabled = true; el.innerHTML = '<span class="spinner"></span> Finding buyers…';
     try {
@@ -1449,6 +1776,12 @@ async function doStatus(id, status, extra) {
 }
 
 const CHANGE = {
+  stageSelect: async el => { try { replaceDeal(await api('setDealStage', el.dataset.id, el.value, {})); S.pipe = null; toast('Moved to <b>' + esc(el.value) + '</b>.'); render(); } catch (e) { fail(e); } },
+  pipeDone: el => { S.pipeShowDone = el.checked; render(); },
+  matchDeal: el => { S.matchDeal = el.value; S.matchData = null; render(); },
+  offerFilter: el => { S.offerFilter[el.name] = el.value; render(); },
+  rating: async el => { try { await api('setBuyerRating', el.dataset.id, el.value); S.ver = null; render(); } catch (e) { fail(e); } },
+  distNum: el => { DIST.audience[el.name] = +el.value || 0; refreshAudience(); },
   intakeSel: el => { el.checked ? S.intakeSel.add(el.value) : S.intakeSel.delete(el.value); render(); },
   intakeSelAll: el => { S.investors.filter(i => i.status === 'Pending Review').forEach(i => el.checked ? S.intakeSel.add(i.id) : S.intakeSel.delete(i.id)); render(); },
   intakeToggle: async el => {
@@ -1477,7 +1810,7 @@ document.addEventListener('click', e => {
     if (g.dataset.go === 'responses') S.responses = null;
     if (g.dataset.go === 'jobs') S.jobs = null;
     if (g.dataset.go === 'intake') S.intake = null;
-    return go(g.dataset.go, g.dataset.id ? { id: g.dataset.id } : {});
+    return go(g.dataset.go, g.dataset.id ? { id: g.dataset.id, tab: g.dataset.tab } : {});
   }
   const a = e.target.closest('[data-act]');
   if (a && ACT[a.dataset.act]) {
@@ -1499,6 +1832,7 @@ api('getBootstrap').then(b => {
   S.settings = b.settings; S.investors = b.investors; S.deals = b.deals; S.dashboard = b.dashboard;
   $('#boot').remove();
   render();
+  api('getFollowUpCenter').then(f => { S.fuDue = f.due.length; renderChrome(); }).catch(() => {});
 }).catch(e => {
   $('#boot').innerHTML = '<div class="inner" style="max-width:520px"><div class="word">SameDay<span>Investments</span></div><p style="color:#FF9A95">' + esc(e.message || e) + '</p><p class="muted small">If this is a new install, open the Google Sheet → Extensions → Apps Script and run <b>setup</b> once, then reload.</p></div>';
 });

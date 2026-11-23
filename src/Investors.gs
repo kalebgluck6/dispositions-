@@ -22,6 +22,14 @@ function normalizeInvestor_(inv) {
   };
   // Only touch these when the caller sends them (the edit form doesn't send purchase history)
   if (inv.mailingAddress !== undefined) out.mailingAddress = str_(inv.mailingAddress);
+  // buy box profile (only when sent)
+  if (inv.zips !== undefined) out.zips = list_(inv.zips).map(function (z) { return z.replace(/[^\d-]/g, ''); }).filter(String).join(', ');
+  if (inv.minAcres !== undefined) out.minAcres = num_(inv.minAcres);
+  if (inv.maxAcres !== undefined) out.maxAcres = num_(inv.maxAcres);
+  if (inv.condition !== undefined) out.condition = CONDITION_PREFS.indexOf(str_(inv.condition)) > -1 ? str_(inv.condition) : '';
+  if (inv.funding !== undefined) out.funding = str_(inv.funding);
+  if (inv.minRoi !== undefined) out.minRoi = num_(inv.minRoi);
+  if (inv.closeDays !== undefined) out.closeDays = num_(inv.closeDays);
   return out;
 }
 
@@ -35,6 +43,12 @@ function cleanInvestorRow_(r) {
   o.optOut = bool_(r.optOut);
   o.dealsReceived = Number(r.dealsReceived) || 0;
   o.status = str_(r.status) || 'Active';
+  o.pofStatus = pofStatus_(r);
+  o.flags = buyerFlags_(r);
+  o.reliabilityScore = reliabilityOf_(r);
+  o.dealsClosed = Number(r.dealsClosed) || 0;
+  o.defaults = Number(r.defaults) || 0;
+  o.pofExpires = r.pofExpires instanceof Date ? fmtDate_(r.pofExpires) : str_(r.pofExpires);
   return o;
 }
 

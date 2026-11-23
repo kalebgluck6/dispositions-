@@ -43,7 +43,41 @@ function cleanDealRow_(r) {
   o.title = dealTitle_(r);
   o.metrics = dealMetrics_(r);
   o.closingDate = r.closingDate instanceof Date ? fmtDate_(r.closingDate) : str_(r.closingDate);
+  o.offerDeadline = r.offerDeadline instanceof Date ? fmtDate_(r.offerDeadline, "yyyy-MM-dd'T'HH:mm") : str_(r.offerDeadline);
+  o.stage = stageOf_(r);
+  o.stageIndex = PIPELINE_STAGES.indexOf(o.stage);
+  var since = parseDateLoose_(r.stageUpdated) || parseDateLoose_(r.updated) || parseDateLoose_(r.created);
+  o.daysInStage = since ? Math.floor((Date.now() - since.getTime()) / 86400000) : 0;
+  o.stuck = ['Closed', 'Dead Deal'].indexOf(o.stage) === -1 && o.daysInStage >= (parseInt(getSettings_().FU_STUCK_DAYS, 10) || 7);
+  o.acresNum = dealAcres_(r);
+  o.isLand = isLandDeal_(r);
   return o;
+}
+
+/** The deal's pipeline stage (derived for deals created before the pipeline existed). */
+function stageOf_(d) {
+  var st = str_(d.stage);
+  if (PIPELINE_STAGES.indexOf(st) > -1) return st;
+  var status = str_(d.status);
+  if (status === 'Sold') return 'Closed';
+  if (status === 'Dead') return 'Dead Deal';
+  if (status === 'Pending') return 'Buyer Selected';
+  return Number(d.timesDistributed) > 0 ? 'Distributed' : 'Ready for Disposition';
+}
+
+function statusForStage_(stage) {
+  var p = PIPELINE.filter(function (x) { return x.stage === stage; })[0];
+  return p ? p.status : 'Available';
+}
+
+/** Moves a deal forward to `stage` only if it's currently at an earlier (active) stage. Caller holds the lock. */
+function advanceStage_(dealId, stage) {
+  var d = findBy_(SHEET.DEALS, 'id', dealId);
+  if (!d) return;
+  var cur = stageOf_(d);
+  if (['Closed', 'Dead Deal'].indexOf(cur) > -1) return;
+  if (PIPELINE_STAGES.indexOf(stage) <= PIPELINE_STAGES.indexOf(cur)) return;
+  updateObject_(SHEET.DEALS, d._row, { stage: stage, stageUpdated: new Date(), status: statusForStage_(stage), updated: new Date() });
 }
 
 function getDealRow_(dealId) {
@@ -79,7 +113,13 @@ function normalizeDeal_(deal) {
     access: str_(deal.access),
     showAccess: deal.showAccess === undefined ? true : bool_(deal.showAccess),
     videoUrl: str_(deal.videoUrl),
-    internalNotes: str_(deal.internalNotes)
+    internalNotes: str_(deal.internalNotes),
+    acres: num_(deal.acres),
+    parcelId: str_(deal.parcelId),
+    zoning: str_(deal.zoning),
+    contractPrice: num_(deal.contractPrice),
+    offerDeadline: str_(deal.offerDeadline).replace('T', ' '),
+    rep: str_(deal.rep)
   };
 }
 
@@ -148,6 +188,8 @@ function saveDeal(deal) {
     } else {
       data.id = nextId_('DEAL_SEQ_' + new Date().getFullYear(), 'SDI-' + new Date().getFullYear() + '-', 4);
       data.status = 'Available';
+      data.stage = 'Ready for Disposition';
+      data.stageUpdated = new Date();
       data.created = new Date();
       data.timesDistributed = 0;
       data.totalRecipients = 0;
@@ -176,9 +218,66 @@ function setDealStatus(dealId, status, extra) {
     } else {
       f.soldDate = '';
     }
+    var cur = stageOf_(d);
+    var target = { Sold: 'Closed', Dead: 'Dead Deal', Pending: PIPELINE_STAGES.indexOf(cur) >= 5 && PIPELINE_STAGES.indexOf(cur) <= 8 ? cur : 'Buyer Selected' }[status];
+    if (status === 'Available') target = PIPELINE_STAGES.indexOf(cur) <= 4 ? cur : (Number(d.timesDistributed) > 0 ? 'Negotiating' : 'Ready for Disposition');
+    if (target !== cur) { f.stage = target; f.stageUpdated = new Date(); }
     updateObject_(SHEET.DEALS, d._row, f);
     return getDeal(dealId);
   });
+}
+
+/**
+ * Sets the pipeline stage. extra: { buyerInvestorId, buyer, soldPrice, emdAmount, closingDate }
+ * Closed records a completed transaction for the buyer; Dead Deal stops distribution.
+ */
+function setDealStage(dealId, stage, extra) {
+  if (PIPELINE_STAGES.indexOf(stage) === -1) throw new Error('Unknown stage ' + stage);
+  extra = extra || {};
+  return withLock_(function () {
+    var d = getDealRow_(dealId);
+    var f = { stage: stage, stageUpdated: new Date(), status: statusForStage_(stage), updated: new Date() };
+    if (extra.buyerInvestorId !== undefined) {
+      f.buyerInvestorId = str_(extra.buyerInvestorId);
+      var inv = f.buyerInvestorId ? findBy_(SHEET.INVESTORS, 'id', f.buyerInvestorId) : null;
+      if (inv) f.buyer = investorName_(inv) + (inv.company && investorName_(inv) !== inv.company ? ' (' + inv.company + ')' : '');
+    }
+    if (extra.buyer !== undefined && !f.buyer) f.buyer = str_(extra.buyer);
+    if (extra.emdAmount !== undefined) f.emdAmount = num_(extra.emdAmount);
+    if (extra.closingDate) f.closingDate = str_(extra.closingDate);
+    if (stage === 'Assignment Signed' && !d.assignmentSigned) f.assignmentSigned = new Date();
+    if (stage === 'EMD Received' && !d.emdReceived) f.emdReceived = new Date();
+    if (stage === 'Closed') {
+      f.soldDate = new Date();
+      if (extra.soldPrice !== undefined) f.soldPrice = num_(extra.soldPrice);
+      var buyerId = f.buyerInvestorId || str_(d.buyerInvestorId);
+      if (buyerId && stageOf_(d) !== 'Closed') {
+        recordBuyerOutcome_(buyerId, 'closed', dealId);
+        readTable_(SHEET.OFFERS).rows.forEach(function (o) {
+          if (o.dealId === dealId && o.investorId === buyerId && ['Accepted', 'Under Contract'].indexOf(o.status) > -1) {
+            updateObject_(SHEET.OFFERS, o._row, { status: 'Closed', updated: new Date() });
+            if (!f.soldPrice && !d.soldPrice) f.soldPrice = num_(o.amount);
+          }
+        });
+      }
+    }
+    updateObject_(SHEET.DEALS, d._row, f);
+    return getDeal(dealId);
+  });
+}
+
+/** Board data: every deal with stage, days in stage, offers and the selected buyer. */
+function getPipeline() {
+  var offers = {};
+  readTable_(SHEET.OFFERS).rows.forEach(function (o) {
+    var x = offers[o.dealId] || (offers[o.dealId] = { count: 0, best: 0, active: 0 });
+    x.count++;
+    if (['Rejected', 'Withdrawn', 'Fell Through'].indexOf(o.status) === -1) { x.active++; x.best = Math.max(x.best, Number(o.amount) || 0); }
+  });
+  return {
+    stages: PIPELINE,
+    deals: listDeals().map(function (d) { d.offers = offers[d.id] || { count: 0, best: 0, active: 0 }; return d; })
+  };
 }
 
 /** Uploads one photo (base64, already resized in the browser). */

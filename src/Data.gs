@@ -183,6 +183,14 @@ function num_(v) {
   return n;
 }
 
+/** Date (with time) from a Date or date string; null if empty/invalid. */
+function asDate_(v) {
+  if (!v) return null;
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+  var d = new Date(v);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 function bool_(v) {
   if (typeof v === 'boolean') return v;
   return /^(true|yes|y|1|x|on)$/i.test(String(v).trim());

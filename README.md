@@ -111,6 +111,83 @@ In **Import Investors**, paste the link to your existing investor Google Sheet a
 
 Everything is also visible directly in the Google Sheet, so you can filter, sort and build pivot tables there.
 
+## Disposition engine (matching, offers, verification, follow-ups, pipeline)
+
+The sidebar is organized as **Main Navigation**, **Buyer Management**, **Distribution & Communication** and **Operations**.
+
+### Buyer buy-box profiles
+Each investor profile holds:
+* preferred cities/markets and **zip codes**
+* property types, min/max price and **min/max acreage**
+* **rehab vs. turnkey** preference
+* **funding** (cash, hard money, private lender, conventional)
+* **preferred ROI %** and **typical closing speed**
+* last deal bought from you, plus purchase history from public records
+* verification status (see below)
+
+### Smart Buyer Matching
+Every buyer is scored 0–100 against each deal:
+
+| Factor | Points |
+|---|---|
+| Location: zip / city or market / has bought there | 30 / 25 / 20 |
+| Property type | 20 |
+| Price within budget | 15 |
+| Acreage (land) | 10 |
+| Tier | up to 10 |
+| Rehab vs. turnkey | 5 |
+| ROI | 5 |
+| Responsiveness | 5 |
+| Verified proof of funds | 3 |
+| Each deal closed with you | +2 (up to +8) |
+| Each contract default | −10 |
+
+Buyers outside what they told you they buy are **excluded**, for example: outside their areas, a property type they don't buy, over their maximum price, or acreage outside their range. Fit levels are strong (70+), good (at or above your minimum, 50 by default) and weak.
+
+**Example:** a 2-acre parcel in Suffolk matches the developers who buy land in Suffolk or 23434, and residential flippers are excluded. See it under **Buyer Matching** or on any deal's **Matches** tab.
+
+**SEND TO INVESTOR NETWORK** now defaults to **Smart match** with **priority waves**:
+* **Wave 1:** your top-tier matched buyers, sent immediately.
+* **Wave 2:** the other matched buyers, 24 hours later.
+* **Wave 3 (optional):** everyone else, 48 hours later.
+
+The delays are adjustable in Settings. The distribution log records each buyer's wave and match score.
+
+### Disposition Pipeline
+Every deal has one of 11 live stages: Ready for Disposition → Distributed → Buyer Interested → Offer Received → Negotiating → Buyer Selected → Assignment Signed → EMD Received → Closing Scheduled → Closed, or Dead Deal.
+
+* **Automatic moves:** a deal advances when it's distributed, when a buyer says they're interested, when an offer arrives and when you accept an offer. You can set any stage by hand from the deal's stage bar or the **Disposition Pipeline** board.
+* **Status follows stage:** Available, Pending, Sold or Dead.
+* **Stuck deals:** a deal with no stage change in 7 days is flagged.
+* **Contract & Closing Tracker:** shows the assignment, EMD and closing countdown for every deal under contract. Closing a deal records a completed transaction on the buyer's profile.
+
+### Offers & Negotiations
+* **Capture:** replies like "OFFER - SDI-…" become offer records automatically, including the amount, EMD, inspection period, closing timeline, financing and whether proof of funds was mentioned. Offers can also be logged by hand.
+* **What's tracked:** offer amount, **your assignment fee** (offer − the deal's private contract price), EMD, inspection period, closing date, proof of funds and contract status (Received, Countered, Accepted, Backup, Under Contract, Closed, Rejected, Withdrawn, Fell Through).
+* **Comparison:** each deal's **Offers** tab shows offers side by side, ranked by a strength score: fee 40, EMD 15, proof of funds 15, buyer reliability 10, closing speed 10, inspection period 10. The best value in each row is highlighted.
+* **Accepting** an offer selects the buyer and moves the other open offers to Backup. **Fell through** records a failed closing on the buyer and reopens the deal.
+
+### Buyer Verification Center
+* **Proof of funds:** upload a document (stored in a private Drive folder that is never shared by link), then verify it with an amount and expiry date. The default validity is 90 days.
+* **Also tracked:** entity name, contact details, purchase history, deals closed with you, contract defaults, and a **reliability rating** (automatic from closings vs. defaults, or set by hand).
+* **Flags:** expired or expiring POF, unverified POF, **buyers with failed closings**, and **open offers without verified POF**.
+
+### Automatic Follow-Ups
+Runs every 2 hours, 8 AM–8 PM. Each reminder is sent **once**, to one buyer at a time, never to opted-out buyers, and to your test address while in test mode.
+
+| Follow-up | When |
+|---|---|
+| Buyer received the deal, matched it, but no response | after 48h |
+| Buyer interested but no offer | after 24h |
+| Offer without verified proof of funds | after 24h, up to 3 reminders 48h apart |
+| Offer deadline approaching | 24h before the deal's offer deadline |
+| EMD not received | 2 days after buyer selected |
+| Closing coming up | 3 days before closing |
+| **Rep alert:** interested or selected buyer has gone quiet | 3 days |
+| **Rep alert:** deal stuck in a stage | 7 days |
+
+Rep alerts arrive as **one digest email per rep**. A deal's rep is set on the deal (pick from the reps listed in Settings); otherwise alerts go to your Reply-To address. **Follow-Up Center** shows what's due, the alerts and the full history, and has a **Send due follow-ups now** button.
+
 ## New Buyers (daily intake)
 
 Open **New Buyers** in the app. Turn on the sources you want and click **Turn on daily intake**, choosing the hour it runs (6 AM by default).
@@ -187,7 +264,7 @@ You can add your own columns to any tab, because the app finds columns by header
 You don't need any of this to *use* the system. It's for changing the code.
 
 ```bash
-npm test                 # runs the backend against an in-memory Apps Script mock (36 end-to-end checks)
+npm test                 # runs the backend against an in-memory Apps Script mock (48 end-to-end checks)
 npm run preview          # builds preview/index.html — the real UI + real server code with sample data, nothing is emailed
 ```
 

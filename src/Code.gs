@@ -27,6 +27,7 @@ function onOpen() {
     .addItem('Scan inbox for investor replies now', 'scanInboxForResponses')
     .addItem('Resume queued distributions', 'runQueuedDistributions')
     .addItem('Find new buyers now', 'runBuyerIntake')
+    .addItem('Run buyer follow-ups now', 'runFollowUpsNow')
     .addToUi();
 }
 
@@ -54,7 +55,7 @@ function setup() {
   if (ss) props.setProperty('SPREADSHEET_ID', ss.getId());
   _ss = null;
   ensureSettings_();
-  [SHEET.INVESTORS, SHEET.DEALS, SHEET.JOBS, SHEET.LOG, SHEET.RESPONSES, SHEET.INTAKE].forEach(function (n) { getSheet_(n); });
+  [SHEET.INVESTORS, SHEET.DEALS, SHEET.JOBS, SHEET.LOG, SHEET.RESPONSES, SHEET.INTAKE, SHEET.OFFERS, SHEET.FOLLOWUPS].forEach(function (n) { getSheet_(n); });
   var book = ss_();
   var blank = book.getSheetByName('Sheet1');
   if (blank && blank.getLastRow() === 0 && book.getSheets().length > 1) book.deleteSheet(blank);

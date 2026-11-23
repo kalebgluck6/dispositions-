@@ -188,11 +188,14 @@
   const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   root.Utilities = {
     getUuid: () => (root.crypto && root.crypto.randomUUID ? root.crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); })),
-    formatDate: (d, tz, f) => f.replace(/yyyy|MMMM|MMM|MM|dd|d|HH|hh|h|mm|ss|a/g, tok => ({
-      yyyy: d.getFullYear(), MMMM: MONTHS[d.getMonth()], MMM: MONTHS[d.getMonth()].slice(0, 3), MM: pad(d.getMonth() + 1),
-      dd: pad(d.getDate()), d: d.getDate(), HH: pad(d.getHours()), hh: pad(d.getHours() % 12 || 12), h: d.getHours() % 12 || 12,
-      mm: pad(d.getMinutes()), ss: pad(d.getSeconds()), a: d.getHours() < 12 ? 'AM' : 'PM'
-    })[tok]),
+    formatDate: (d, tz, f) => {
+      const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      return f.replace(/'([^']*)'|yyyy|MMMM|MMM|MM|dd|d|EEEE|EEE|HH|H|hh|h|mm|ss|a/g, (tok, lit) => lit !== undefined ? lit : ({
+        yyyy: d.getFullYear(), MMMM: MONTHS[d.getMonth()], MMM: MONTHS[d.getMonth()].slice(0, 3), MM: pad(d.getMonth() + 1),
+        dd: pad(d.getDate()), d: d.getDate(), EEEE: DAYS[d.getDay()], EEE: DAYS[d.getDay()].slice(0, 3), HH: pad(d.getHours()), H: d.getHours(),
+        hh: pad(d.getHours() % 12 || 12), h: d.getHours() % 12 || 12, mm: pad(d.getMinutes()), ss: pad(d.getSeconds()), a: d.getHours() < 12 ? 'AM' : 'PM'
+      })[tok]);
+    },
     base64Encode: b64enc,
     base64Decode: b64dec,
     newBlob: (bytes, mime, name) => new Blob(bytes, mime, name),
@@ -311,7 +314,7 @@
       const t = { fn, kind: '' };
       const b = {
         timeBased: () => b, after: (ms) => { t.kind = 'after ' + ms; return b; }, everyMinutes: (n) => { t.kind = 'every ' + n + 'm'; return b; },
-        everyDays: (n) => { t.kind = 'every ' + n + 'd'; return b; }, atHour: (h) => { t.kind += ' @' + h; return b; },
+        everyDays: (n) => { t.kind = 'every ' + n + 'd'; return b; }, everyHours: (n) => { t.kind = 'every ' + n + 'h'; return b; }, atHour: (h) => { t.kind += ' @' + h; return b; },
         forForm: () => b, onFormSubmit: () => { t.kind = 'formSubmit'; return b; },
         create: () => { const tr = { getHandlerFunction: () => fn, kind: t.kind }; MOCK.triggers.push(tr); return tr; }
       };

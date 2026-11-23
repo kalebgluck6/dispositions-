@@ -137,12 +137,18 @@ function scanInboxForResponses() {
     });
 
     appendObjects_(SHEET.RESPONSES, newRows);
+    var offersCreated = 0;
+    newRows.forEach(function (r) {
+      if (!r.dealId) return;
+      if (r.type === 'Offer' && createOfferFromResponse_(r)) offersCreated++;
+      if (r.type === 'Interested' || r.type === 'Offer') advanceStage_(r.dealId, 'Buyer Interested');
+    });
     optOuts.forEach(function (inv) {
       updateObject_(SHEET.INVESTORS, inv._row, { optOut: true, updated: new Date(), notes: (str_(inv.notes) + ' [Unsubscribed by email ' + fmtDate_(new Date()) + ']').trim() });
     });
     Object.keys(touchedDeals).forEach(recountDeal_);
     setSetting_('LAST_INBOX_SCAN', new Date().toISOString());
-    return { found: newRows.length, unsubscribed: optOuts.length, scannedAt: new Date().toISOString() };
+    return { found: newRows.length, unsubscribed: optOuts.length, offers: offersCreated, scannedAt: new Date().toISOString() };
   });
 }
 
@@ -168,6 +174,8 @@ function logResponse(r) {
     };
     appendObjects_(SHEET.RESPONSES, [row]);
     if (type === 'Unsubscribe' && inv) updateObject_(SHEET.INVESTORS, inv._row, { optOut: true, updated: new Date() });
+    if (type === 'Interested' || type === 'Offer') advanceStage_(deal.id, 'Buyer Interested');
+    if (type === 'Offer') createOfferFromResponse_(row);
     recountDeal_(deal.id);
     return toClient_(row);
   });

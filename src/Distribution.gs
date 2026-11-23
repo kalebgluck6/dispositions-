@@ -61,7 +61,20 @@ function resolveAudience_(deal, audience, investors, logRows) {
       if (l.dealId === deal.id && l.mode === 'LIVE' && l.status === 'Sent') already[l.investorId] = true;
     });
   }
-  var ex = { inactive: 0, optedOut: 0, invalidEmail: 0, duplicate: 0, notInSegment: 0, criteria: 0, alreadySent: 0 };
+  var ex = { inactive: 0, optedOut: 0, invalidEmail: 0, duplicate: 0, notInSegment: 0, criteria: 0, alreadySent: 0, notMatched: 0 };
+  var smart = null;
+  if (mode === 'smart') {
+    smart = {};
+    var minScore = Number(audience.minScore) || parseInt(getSettings_().MATCH_MIN_SCORE, 10) || 50;
+    var ctxM = matchContext_(deal.id);
+    investors.forEach(function (inv) {
+      var m = matchInvestor_(inv, deal, ctxM);
+      m.matched = !m.blockers.length && m.score >= minScore;
+      smart[inv.id] = m;
+    });
+    var topRank = 99;
+    investors.forEach(function (inv) { if (smart[inv.id].matched && smart[inv.id].tierRank < topRank) topRank = smart[inv.id].tierRank; });
+  }
   var seen = {};
   var included = [];
   investors.forEach(function (inv) {
@@ -77,17 +90,30 @@ function resolveAudience_(deal, audience, investors, logRows) {
       if (mkts.length && !overlap_(list_(inv.markets), mkts)) { ex.notInSegment++; return; }
     }
     if (audience.matchCriteria && !matchesCriteria_(inv, deal)) { ex.criteria++; return; }
+    var wave = 1, score = '';
+    if (smart) {
+      var m = smart[inv.id];
+      score = m.score;
+      if (!m.matched) {
+        if (!audience.includeOthers) { ex.notMatched++; return; }
+        wave = 3;
+      } else wave = audience.waves === false || m.tierRank === topRank ? 1 : 2;
+    }
     if (already[inv.id]) { ex.alreadySent++; return; }
     seen[email] = true;
+    inv._wave = wave; inv._score = score;
     included.push(inv);
   });
+  // highest priority first: wave, then match score, then tier
+  included.sort(function (a, b) { return (a._wave - b._wave) || ((Number(b._score) || 0) - (Number(a._score) || 0)) || (tierRank_(a.tier) - tierRank_(b.tier)); });
   return { included: included, excluded: ex };
 }
 
 function describeAudience_(a) {
   a = a || {};
   var parts = [];
-  if (a.mode === 'selected') parts.push('Hand-picked (' + (a.investorIds || []).length + ')');
+  if (a.mode === 'smart') parts.push('Smart match ≥ ' + (Number(a.minScore) || parseInt(getSettings_().MATCH_MIN_SCORE, 10) || 50) + (a.waves === false ? '' : ', priority waves') + (a.includeOthers ? ' + all other active buyers last' : ''));
+  else if (a.mode === 'selected') parts.push('Hand-picked (' + (a.investorIds || []).length + ')');
   else if (a.mode === 'segments') {
     if (list_(a.tiers).length) parts.push('Tiers: ' + list_(a.tiers).join('/'));
     if (list_(a.categories).length) parts.push('Categories: ' + list_(a.categories).join('/'));
@@ -114,8 +140,9 @@ function previewAudience(dealId, audience) {
     count: res.included.length,
     excluded: res.excluded,
     recipients: res.included.map(function (i) {
-      return { id: i.id, name: investorName_(i), email: str_(i.email), tier: str_(i.tier), categories: str_(i.categories) };
+      return { id: i.id, name: investorName_(i), email: str_(i.email), tier: str_(i.tier), categories: str_(i.categories), wave: i._wave, score: i._score };
     }),
+    waves: [1, 2, 3].map(function (w) { return res.included.filter(function (i) { return i._wave === w; }).length; }),
     testMode: isTestMode_(),
     quota: remainingQuota_()
   };
@@ -143,6 +170,7 @@ function sendTestEmail(dealId, toEmail) {
 function prepareDistribution(dealId, audience) {
   var deal = getDealRow_(dealId);
   if (str_(deal.status) === 'Sold') throw new Error('This deal is marked SOLD. Change its status before distributing.');
+  if (str_(deal.status) === 'Dead') throw new Error('This deal is marked DEAD. Change its status before distributing.');
   var settings = getSettings_();
   var res = resolveAudience_(deal, audience, readTable_(SHEET.INVESTORS).rows, readTable_(SHEET.LOG).rows);
   if (!res.included.length) throw new Error('No investors match this audience.');
@@ -152,6 +180,8 @@ function prepareDistribution(dealId, audience) {
     dealId: dealId,
     audience: audience || { mode: 'all' },
     ids: res.included.map(function (i) { return i.id; }),
+    waves: res.included.map(function (i) { return i._wave || 1; }),
+    scores: res.included.map(function (i) { return i._score === undefined ? '' : i._score; }),
     mode: testMode ? 'TEST' : 'LIVE',
     user: currentUser_()
   };
@@ -169,7 +199,9 @@ function prepareDistribution(dealId, audience) {
     testEmail: str_(settings.TEST_EMAIL),
     testDeliveries: testMode ? Math.min(testMax, res.included.length) : 0,
     quota: remainingQuota_(),
-    previouslySent: Number(deal.timesDistributed) || 0
+    previouslySent: Number(deal.timesDistributed) || 0,
+    waves: [1, 2, 3].map(function (w) { return res.included.filter(function (i) { return (i._wave || 1) === w; }).length; }),
+    waveDelays: [0, Number(getSettings_().WAVE2_DELAY_HOURS) || 24, Number(getSettings_().WAVE3_DELAY_HOURS) || 48]
   };
 }
 
@@ -198,12 +230,16 @@ function confirmDistribution(token, typed) {
     var id = 'JOB-' + fmtDate_(new Date(), 'yyyyMMdd-HHmmss') + '-' + Utilities.getUuid().slice(0, 4).toUpperCase();
     var now = new Date();
     var rows = [];
+    var delays = [0, Number(settings.WAVE2_DELAY_HOURS) || 24, Number(settings.WAVE3_DELAY_HOURS) || 48];
     p.ids.forEach(function (invId, n) {
       var inv = byId[invId];
       if (!inv) return;
       var status = 'Queued';
       if (p.mode === 'TEST' && n >= testMax) status = 'Simulated';
+      var wave = (p.waves && p.waves[n]) || 1;
+      var after = wave > 1 && p.mode === 'LIVE' ? new Date(now.getTime() + delays[wave - 1] * 3600000) : '';
       rows.push({
+        wave: wave, sendAfter: after, matchScore: p.scores ? p.scores[n] : '',
         id: shortId_('L-'), jobId: id, dealId: p.dealId, investorId: inv.id, investorName: investorName_(inv),
         investorEmail: lc_(inv.email), tier: str_(inv.tier), mode: p.mode, status: status, queuedAt: now,
         sentAt: '', deliveredTo: '', error: ''
@@ -268,7 +304,10 @@ function processQueueSafely_(jobId) {
     _lockDepth = 0;
     lock.releaseLock();
   }
-  if (res && res.remaining > 0) scheduleQueue_(res.quotaExhausted ? 60 * 60 * 1000 : 60 * 1000);
+  if (res && res.remaining > 0) {
+    var wait = res.quotaExhausted ? 60 * 60 * 1000 : res.dueRemaining ? 60 * 1000 : Math.max(60 * 1000, Math.min(res.nextDueMs || 0, 6 * 3600 * 1000));
+    scheduleQueue_(wait);
+  }
 }
 
 function scheduleQueue_(ms) {
@@ -284,10 +323,14 @@ function processQueue_(onlyJobId, budgetMs) {
   var started = Date.now();
   var settings = getSettings_();
   var log = readTable_(SHEET.LOG);
-  var queued = log.rows.filter(function (l) { return l.status === 'Queued' && (!onlyJobId || l.jobId === onlyJobId); });
+  var nowMs = Date.now();
+  var allQueued = log.rows.filter(function (l) { return l.status === 'Queued' && (!onlyJobId || l.jobId === onlyJobId); });
+  var future = allQueued.filter(function (l) { var t = asDate_(l.sendAfter); return t && t.getTime() > nowMs; });
+  var queued = allQueued.filter(function (l) { return future.indexOf(l) === -1; });
+  var nextDue = future.reduce(function (m, l) { var t = asDate_(l.sendAfter).getTime(); return Math.min(m, t); }, Infinity);
   if (!queued.length) {
     if (onlyJobId) refreshJob_(onlyJobId);
-    return { remaining: 0, sent: 0 };
+    return { remaining: future.length, sent: 0, nextDueMs: future.length ? nextDue - nowMs : 0 };
   }
   var quota = remainingQuota_();
   if (quota < 0) quota = 1e9; // quota unavailable — let Gmail enforce it
@@ -345,7 +388,7 @@ function processQueue_(onlyJobId, budgetMs) {
   Object.keys(jobIds).forEach(function (j) { refreshJob_(j, quotaExhausted); });
 
   var remaining = queued.filter(function (q) { return q.status === 'Queued'; }).length;
-  return { remaining: remaining, sent: processed, quotaExhausted: quotaExhausted };
+  return { remaining: remaining + future.length, dueRemaining: remaining, sent: processed, quotaExhausted: quotaExhausted, nextDueMs: future.length ? nextDue - nowMs : 0 };
 }
 
 function flushLog_(log, touched) {
@@ -419,7 +462,11 @@ function refreshJob_(jobId, quotaExhausted) {
   var c = { Sent: 0, Failed: 0, Simulated: 0, Queued: 0, Skipped: 0, Cancelled: 0 };
   rows.forEach(function (r) { c[r.status] = (c[r.status] || 0) + 1; });
   var status;
-  if (c.Queued > 0) status = quotaExhausted ? 'Paused — daily email limit (resumes automatically)' : 'Sending';
+  var waiting = rows.filter(function (r) { var t = asDate_(r.sendAfter); return r.status === 'Queued' && t && t.getTime() > Date.now(); });
+  if (c.Queued > 0 && waiting.length === c.Queued) {
+    var nxt = waiting.reduce(function (m, r) { return Math.min(m, asDate_(r.sendAfter).getTime()); }, Infinity);
+    status = 'Wave ' + waiting[0].wave + ' scheduled — ' + waiting.length + ' buyers at ' + fmtDate_(new Date(nxt), 'MMM d h:mm a');
+  } else if (c.Queued > 0) status = quotaExhausted ? 'Paused — daily email limit (resumes automatically)' : 'Sending';
   else if (c.Cancelled > 0) status = 'Cancelled';
   else if (c.Failed > 0) status = 'Completed with errors';
   else status = 'Completed';
@@ -438,6 +485,7 @@ function refreshJob_(jobId, quotaExhausted) {
       if (c.Sent > 0) df.lastDistributed = new Date();
       if (c.Queued === 0 && !wasDone && c.Sent > 0) df.timesDistributed = (Number(deal.timesDistributed) || 0) + 1;
       updateObject_(SHEET.DEALS, deal._row, df);
+      if (c.Sent > 0) advanceStage_(job.dealId, 'Distributed');
     }
   }
 }
