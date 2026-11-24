@@ -356,6 +356,11 @@ var DEFAULT_SETTINGS = [
   ['INTAKE_COUNTY_ON', 'TRUE', 'Find buyers in free City of Norfolk recorded-sales data.'],
   ['INTAKE_COUNTY_DAYS', '30', 'Only county sales recorded within this many days.'],
   ['INTAKE_COUNTY_MIN_PRICE', '20000', 'Ignore county sales below this price.'],
+  ['INTAKE_WATCH_ON', 'TRUE', 'Find investor buyers in free public records for Hampton Roads, Richmond and Elizabeth City / Camden.'],
+  ['INTAKE_WATCH_AREAS', '', 'Which public-records areas to watch (blank = all).'],
+  ['INTAKE_WATCH_DAYS', '45', 'Live sales feeds (York County): only sales recorded within this many days.'],
+  ['INTAKE_WATCH_MIN_PRICE', '10000', 'Live sales feeds: ignore sales below this price ($0 family / trust transfers).'],
+  ['INTAKE_WATCH_INDIVIDUALS', 'TRUE', 'Also include individual buyers who don\'t live at the property (absentee = investor). Companies / LLCs / trusts are always included.'],
   ['INTAKE_COUNTY_ENTITIES_ONLY', 'TRUE', 'Only company / LLC / trust buyers (free records cannot show cash vs. financed).'],
   // ---- matching ----
   ['MATCH_MIN_SCORE', '50', 'Smart matching: minimum match score (0–100) for a buyer to count as a match.'],

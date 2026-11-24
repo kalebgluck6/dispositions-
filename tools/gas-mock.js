@@ -182,7 +182,8 @@
   function Blob(bytes, mime, name) { this._b = bytes || []; this._m = mime || 'application/octet-stream'; this._n = name || 'blob'; }
   Blob.prototype = {
     getBytes() { return this._b; }, getContentType() { return this._m; }, getName() { return this._n; },
-    setName(n) { this._n = n; return this; }, copyBlob() { return new Blob(this._b.slice(), this._m, this._n); }
+    setName(n) { this._n = n; return this; }, copyBlob() { const b = new Blob(this._b.slice(), this._m, this._n); b._s = this._s; return b; },
+    getDataAsString() { return this._s !== undefined ? this._s : String.fromCharCode.apply(null, this._b); }
   };
   const pad = (n, w) => String(n).padStart(w || 2, '0');
   const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -240,12 +241,14 @@
     getId() { return this._id; }, getName() { return this._blob.getName(); }, getBlob() { return this._blob.copyBlob(); },
     getSize() { return this._blob.getBytes().length; }, getThumbnail() { return this._blob.copyBlob(); },
     getUrl() { return 'https://drive.google.com/file/d/' + this._id + '/view'; },
-    setTrashed(v) { this._trashed = v; return this; }, setSharing(a) { this.sharing = a; return this; }
+    setTrashed(v) { this._trashed = v; return this; }, setSharing(a) { this.sharing = a; return this; },
+    setContent(c) { this._blob._s = String(c); return this; }
   };
   function Folder(name) { this._id = id('folder'); this._name = name; this.sharing = 'PRIVATE'; MOCK.folders[this._id] = this; }
   Folder.prototype = {
     getId() { return this._id; }, getName() { return this._name; },
-    createFolder(n) { return new Folder(n); }, createFile(blob) { return new File(blob, this); },
+    createFolder(n) { return new Folder(n); },
+    createFile(a, content, mime) { if (typeof a === 'string') { const b = new Blob([], mime || 'text/plain', a); b._s = String(content); return new File(b, this); } return new File(a, this); },
     setSharing(a) { this.sharing = a; return this; }, getUrl() { return 'https://drive.google.com/drive/folders/' + this._id; }
   };
   root.DriveApp = {

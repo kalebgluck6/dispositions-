@@ -115,6 +115,7 @@ function saveSettings(values) {
   return withLock_(function () {
     var allowed = DEFAULT_SETTINGS.map(function (d) { return d[0]; })
       .filter(function (k) { return ['TEST_MODE', 'DRIVE_FOLDER_ID', 'BUYER_FORM_ID', 'BUYER_FORM_URL'].indexOf(k) === -1; });
+    if (values.INTAKE_WATCH_AREAS !== undefined) values.INTAKE_WATCH_AREAS = list_(values.INTAKE_WATCH_AREAS).filter(function (k) { return WATCH_SOURCES.some(function (w) { return w.key === k; }); }).join(', ');
     if (values.INTAKE_DM_COUNTIES !== undefined) values.INTAKE_DM_COUNTIES = list_(values.INTAKE_DM_COUNTIES).filter(function (f) { return /^\d{5}$/.test(f); }).join(', ');
     if (values.TEST_EMAIL && !isEmail_(values.TEST_EMAIL)) throw new Error('Test email address is not valid.');
     if (values.REPLY_TO && !isEmail_(values.REPLY_TO)) throw new Error('Reply-To address is not valid.');

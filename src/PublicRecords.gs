@@ -92,6 +92,9 @@ function groupSales_(sales, days, sourceNote) {
     var landBuys = g.buys.filter(function (b) { return /land|lot|development|acre/i.test(String(b.type)); }).length;
     var cats = [];
     if (fin.indexOf('cash') > -1) cats.push('Cash Buyer');
+    if (g.buys.some(function (b) { return /commercial/i.test(String(b.type)); })) {
+      cats.push(list_(getSettings_().CATEGORIES).filter(function (c) { return /commercial/i.test(c); })[0] || 'Commercial Buyer');
+    }
     if (landBuys) {
       var dev = list_(getSettings_().CATEGORIES).filter(function (c) { return /develop|builder|construction/i.test(c); })[0] || 'Developer';
       cats.push(dev);
@@ -385,13 +388,14 @@ function countyLeads_(ctx) {
     var buyer = str_(r.grantee) || str_(r.owner);
     if (!buyer) return;
     if (entitiesOnly && !ENTITY_RE.test(buyer)) return;
+    if (INSTITUTION_RE.test(buyer)) return;
     var ref = 'NFK:' + r.parcel_id + ':' + String(r.transfer_date || '').slice(0, 10);
     kept++;
     if (ctx.refs[ref]) return;
     var addr = [r.property_street_number, r.property_street_direction, r.property_street_name, r.property_street_type].filter(Boolean).join(' ') + (r.unit_number ? ' #' + r.unit_number : '');
     sales.push({
       name: buyer, email: '', phone: '', mailing: '', addr: addr, city: r.property_city || 'Norfolk', state: 'VA',
-      date: parseDateLoose_(String(r.transfer_date || '').slice(0, 10)), price: Number(r.consideration) || '', type: r.property_use || '',
+      date: parseDateLoose_(String(r.transfer_date || '').slice(0, 10)), price: Number(r.consideration) || '', type: propKind_(r.property_use, '', undefined),
       financing: '', saleRef: ref
     });
   });

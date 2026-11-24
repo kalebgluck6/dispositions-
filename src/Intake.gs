@@ -19,7 +19,8 @@ var INTAKE_SOURCES = {
   cash: { label: 'Cash buyer (public records)', setting: 'INTAKE_CASH_ON' },
   gmail: { label: 'Gmail inquiry', setting: 'INTAKE_GMAIL_ON' },
   dealmachine: { label: 'DealMachine (recent sales)', setting: 'INTAKE_DM_ON' },
-  county: { label: 'County records (Norfolk)', setting: 'INTAKE_COUNTY_ON' }
+  county: { label: 'County records (Norfolk)', setting: 'INTAKE_COUNTY_ON' },
+  watch: { label: 'Public records (Hampton Roads, Richmond, NC)', setting: 'INTAKE_WATCH_ON' }
 };
 
 var BUYER_FORM_Q = {
@@ -507,7 +508,7 @@ function gmailLeads_(ctx) {
 
 /** Resolved at run time so file order in the Apps Script project doesn't matter. */
 function intakeRunner_(k) {
-  return { form: formLeads_, sheet: sheetLeads_, cash: cashLeads_, gmail: gmailLeads_, dealmachine: dmLeads_, county: countyLeads_ }[k];
+  return { form: formLeads_, sheet: sheetLeads_, cash: cashLeads_, gmail: gmailLeads_, dealmachine: dmLeads_, county: countyLeads_, watch: watchLeads_ }[k];
 }
 
 /** Caller must hold the lock (or use runBuyerIntake). */
@@ -589,7 +590,8 @@ function getIntakeStatus() {
     log: log,
     sources: Object.keys(INTAKE_SOURCES).map(function (k) { return { key: k, label: INTAKE_SOURCES[k].label, on: bool_(s[INTAKE_SOURCES[k].setting]) }; }),
     dm: { hasKey: !!dmKey_(), keyHint: dmKey_() ? '…' + dmKey_().slice(-4) : '', creditsThisMonth: dmCreditsUsed_(), cap: parseInt(s.INTAKE_DM_MONTHLY_CAP, 10) || 0 },
-    areas: DM_AREAS
+    areas: DM_AREAS,
+    watch: watchStatus_()
   });
 }
 

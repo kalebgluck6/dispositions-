@@ -814,6 +814,7 @@ const SRC_HELP = {
   sheet: 'Any Google Sheet you or a VA keep adding buyers to (from calls, meetups, BiggerPockets, other lists). Needs an Email column. Each day only new rows are added.',
   cash: 'Investors who recently bought with cash in your area. Export recent cash sales from PropStream, BatchLeads, PropertyRadar, DealMachine or your county records into a Google Sheet. Each day the system groups the sales by owner and builds their buy box from what they bought. Owners without an email are held until you add one (skip trace).',
   dealmachine: 'Active investors found in recorded sales across all your areas: properties that sold in the last few days where the buyer paid cash (no mortgage) or used a hard-money lender and doesn\'t live there, plus builders buying residential land and lots. DealMachine also supplies the owner\'s phone and email. Each run only pulls new sales, so credits stay low.',
+  watch: '',
   county: 'Free public records from the City of Norfolk: every recorded property sale with the buyer, date and price, updated daily. Free records don\'t show whether a mortgage was used, so by default only company / LLC / trust buyers are added. They usually have no email, so skip trace them before approving.',
   gmail: 'People who email you asking to get on your list ("add me to your buyers list", "send me deals", "cash buyer"…). Their name, phone, markets, price range and strategy are read from the email.'
 };
@@ -854,7 +855,7 @@ VIEWS.intake = {
     const srcCard = (k, title, body) => {
       const on = st.sources.find(x => x.key === k).on, r = last[k];
       const res = !r ? '' : r.status === 'off' ? '' : r.status === 'error' ? '<div class="small" style="color:#FF9A95;margin-top:10px">Last run error: ' + esc(r.note) + '</div>'
-        : '<div class="small muted" style="margin-top:10px">Last run: <b style="color:var(--text)">' + (r.added || 0) + ' added</b>' + (r.updated ? ', ' + r.updated + ' updated' : '') + (r.duplicate ? ', ' + r.duplicate + ' already in database' : '') + (r.skipped ? ', ' + r.skipped + ' skipped' : '') + (r.note ? ' · ' + esc(r.note) : '') + '</div>';
+        : '<div class="small muted" style="margin-top:10px">Last run: <b style="color:var(--text)">' + (r.added || 0) + ' added</b>' + (r.updated ? ', ' + r.updated + ' updated' : '') + (r.duplicate ? ', ' + r.duplicate + ' already in database' : '') + (r.skipped ? ', ' + r.skipped + ' skipped' : '') + (r.note && k !== 'watch' ? ' · ' + esc(r.note) : '') + '</div>';
       return '<div class="card" data-src="' + k + '"><div class="hd"><h3>' + title + '</h3><div style="flex:1"></div><label class="check"><input type="checkbox" data-change="intakeToggle" data-key="' + esc(INTAKE_KEYS[k]) + '"' + (on ? ' checked' : '') + '> ' + (on ? 'On' : 'Off') + '</label></div>' +
         '<div class="bd stack"><div class="small muted">' + SRC_HELP[k] + '</div>' + body + res + '</div></div>';
     };
@@ -875,6 +876,14 @@ VIEWS.intake = {
           cfg('INTAKE_DM_LAND_MIN_PRICE', 'Min. land price', 'number') + yn('INTAKE_DM_CONTACTS', 'Get phone + email') + cfg('INTAKE_DM_MAX_PER_RUN', 'Max properties per run', 'number') + '</div>' +
         '<div class="grid g3">' + cfg('INTAKE_DM_MONTHLY_CAP', 'Monthly credit limit', 'number') + '<div class="field"><label>Credits used this month</label><div style="padding:9px 0;font-size:15px">' + (dm.creditsThisMonth || 0) + (dm.cap ? ' <span class="muted">of ' + dm.cap + '</span>' : '') + '</div></div></div>' +
         '<div class="row"><button class="btn sm primary" data-act="intakeSave" data-src="dealmachine">Save</button><button class="btn sm" data-act="dmPreview"' + (dm.hasKey ? '' : ' disabled') + '>Preview matches (free)</button></div><div class="small" id="check-dealmachine"></div>') +
+      srcCard('watch', 'Public Records: Hampton Roads, Richmond & NC (Free)',
+        '<div class="small muted">Companies, LLCs and investors buying houses, commercial property and land, from free public records. <b>Live sales feeds</b> show buyers daily. <b>Owner-change watch</b> areas keep a private snapshot of every parcel\'s owner and flag new owners each time the locality refreshes its records (the first run only saves the snapshot).</div>' +
+        '<table class="t" style="margin-top:4px"><tbody>' + ((st.watch || {}).areas || []).map(a => '<tr><td style="padding:7px 6px;width:24px"><span class="chip' + (a.on ? ' on' : '') + '" data-act="chip" data-watch="' + esc(a.key) + '" style="padding:2px 8px">' + (a.on ? '✓' : '+') + '</span></td>' +
+          '<td style="padding:7px 6px"><b>' + esc(a.label) + '</b><div class="small muted">' + (a.kind === 'sales' ? 'Live sales feed · daily' : 'Owner-change watch · refreshes ' + esc(a.cadence)) + '</div></td>' +
+          '<td class="small" style="padding:7px 6px;color:' + (/error/.test(a.lastNote) ? '#FF9A95' : 'var(--text-2)') + '">' + esc(a.lastNote || 'not run yet') + (a.dataDate ? '<div class="muted">data as of ' + esc(a.dataDate) + '</div>' : '') + '</td></tr>').join('') + '</tbody></table>' +
+        '<div class="grid g3">' + cfg('INTAKE_WATCH_DAYS', 'Live feeds: sold within (days)', 'number') + cfg('INTAKE_WATCH_MIN_PRICE', 'Min. sale price', 'number') + yn('INTAKE_WATCH_INDIVIDUALS', 'Include individual investors') + '</div>' +
+        '<div class="small muted">' + esc(((st.watch || {}).notAvailable) || '') + ' Free records never show whether a purchase was cash.</div>' +
+        '<div class="row"><button class="btn sm primary" data-act="intakeSave" data-src="watch">Save</button></div>') +
       srcCard('county', 'Norfolk County Records (Free)',
         '<div class="grid g3">' + cfg('INTAKE_COUNTY_DAYS', 'Sold within (days)', 'number') + cfg('INTAKE_COUNTY_MIN_PRICE', 'Min. price', 'number') + yn('INTAKE_COUNTY_ENTITIES_ONLY', 'Companies / LLCs only') + '</div>' +
         '<div class="small muted">Other localities in your areas (Virginia Beach, Chesapeake, Richmond, Henrico, Pasquotank…) don\'t publish buyer names in a form that can be pulled automatically, so DealMachine covers them.</div>' +
@@ -904,7 +913,7 @@ VIEWS.intake = {
   },
   mount() { if (!S.intake) api('getIntakeStatus').then(st => { S.intake = st; if (S.view === 'intake') render(); }).catch(fail); }
 };
-const INTAKE_KEYS = { form: 'INTAKE_FORM_ON', sheet: 'INTAKE_SHEET_ON', cash: 'INTAKE_CASH_ON', gmail: 'INTAKE_GMAIL_ON', dealmachine: 'INTAKE_DM_ON', county: 'INTAKE_COUNTY_ON' };
+const INTAKE_KEYS = { form: 'INTAKE_FORM_ON', sheet: 'INTAKE_SHEET_ON', cash: 'INTAKE_CASH_ON', gmail: 'INTAKE_GMAIL_ON', dealmachine: 'INTAKE_DM_ON', county: 'INTAKE_COUNTY_ON', watch: 'INTAKE_WATCH_ON' };
 
 async function intakeStatus(ids, status) {
   const tier = status === 'Active' ? (($('#approveTier') || {}).value || '') : '';
@@ -1497,6 +1506,7 @@ const ACT = {
     const card = el.closest('.card[data-src]'), vals = {};
     $$('[data-cfg]', card).forEach(x => { vals[x.dataset.cfg] = x.value; });
     if (card.dataset.src === 'dealmachine') vals.INTAKE_DM_COUNTIES = $$('[data-fips].on', card).map(c => c.dataset.fips).join(', ');
+    if (card.dataset.src === 'watch') vals.INTAKE_WATCH_AREAS = $$('[data-watch].on', card).map(c => c.dataset.watch).join(', ');
     try { S.settings = await api('saveSettings', vals); toast('Saved.'); } catch (e) { fail(e); }
   },
   intakeCheck: async el => {
@@ -1517,7 +1527,7 @@ const ACT = {
   intakeApprove: () => intakeStatus(Array.from(S.intakeSel), 'Active'),
   intakeReject: () => { if (confirmSafe('Reject ' + S.intakeSel.size + ' buyers? They are set to Inactive and never receive deals.')) intakeStatus(Array.from(S.intakeSel), 'Inactive'); },
   intakeOne: el => intakeStatus([el.dataset.id], el.dataset.val),
-  chip: el => el.classList.toggle('on'),
+  chip: el => { el.classList.toggle('on'); if (el.dataset.watch) el.textContent = el.classList.contains('on') ? '✓' : '+'; },
   dealFilter: el => { S.dealFilter = el.dataset.val; render(); },
   distribute: el => openDistribute(el.dataset.id),
   saveAndSend: () => saveDealForm(true),
