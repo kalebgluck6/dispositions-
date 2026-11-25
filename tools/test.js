@@ -640,20 +640,20 @@ step('Norfolk county records (free): newest dataset found, company buyers kept, 
     if (url.indexOf('data.norfolk.gov/resource/') > -1) { queried = url; return { code: 200, body: nf }; }
     return dmHandler(url, o);
   };
-  g.saveSettings({ INTAKE_COUNTY_ON: 'TRUE', INTAKE_DM_ON: 'FALSE' });
+  g.saveSettings({ INTAKE_COUNTY_ON: 'TRUE', INTAKE_DM_ON: 'FALSE', INTAKE_WATCH_ON: 'FALSE', INTAKE_ACTIVE_MIN_BUYS: '1' });
   const r = g.runBuyerIntake();
   assert.strictEqual(r.results.county.status, 'ok', JSON.stringify(r.results.county));
   assert(queried.indexOf('/resource/qva7-tzrf.json') > -1, 'uses newest fiscal-year dataset');
   assert(decodeURIComponent(queried).indexOf("transfer_date >= '") > -1);
-  assert.strictEqual(r.results.county.added, 2, JSON.stringify(r.results.county));
-  assert.strictEqual(r.results.county.updated, 1, 'known LLC gets the new purchase added');
+  assert.strictEqual(r.results.active.added, 2, JSON.stringify(r.results.active));
+  assert.strictEqual(r.results.active.updated, 1, 'known LLC gets the new purchase added');
   const inv = g.listInvestors();
   assert(!inv.some(i => i.lastName === 'Mary' || i.firstName === 'Jones'), 'individual homebuyers skipped by default');
   const nb = inv.find(i => i.company === 'New Beginnings Development Llc');
   assert(/Developer/.test(nb.categories)); assert.strictEqual(nb.propertyTypes, 'Land');
   assert.strictEqual(nb.status, 'Pending Review'); assert.strictEqual(nb.email, '');
   assert.strictEqual(g.listInvestors().filter(i => i.company === 'Tidewater Home Buyers LLC').length, 1, 'same company across sources = one buyer');
-  assert.strictEqual(g.runBuyerIntake().results.county.added, 0, 'each recorded sale processed once');
+  assert.strictEqual(g.runBuyerIntake().results.active.added, 0, 'each recorded sale processed once');
 });
 
 step('morning + night schedule', () => {

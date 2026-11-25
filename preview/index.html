@@ -1270,7 +1270,7 @@ function setup() {
   if (ss) props.setProperty('SPREADSHEET_ID', ss.getId());
   _ss = null;
   ensureSettings_();
-  [SHEET.INVESTORS, SHEET.DEALS, SHEET.JOBS, SHEET.LOG, SHEET.RESPONSES, SHEET.INTAKE, SHEET.OFFERS, SHEET.FOLLOWUPS].forEach(function (n) { getSheet_(n); });
+  [SHEET.INVESTORS, SHEET.DEALS, SHEET.JOBS, SHEET.LOG, SHEET.RESPONSES, SHEET.INTAKE, SHEET.OFFERS, SHEET.FOLLOWUPS, SHEET.LEDGER].forEach(function (n) { getSheet_(n); });
   var book = ss_();
   var blank = book.getSheetByName('Sheet1');
   if (blank && blank.getLastRow() === 0 && book.getSheets().length > 1) book.deleteSheet(blank);
@@ -1353,7 +1353,8 @@ var SHEET = {
   RESPONSES: 'Responses',
   INTAKE: 'Buyer Intake Log',
   OFFERS: 'Offers',
-  FOLLOWUPS: 'Follow-Ups'
+  FOLLOWUPS: 'Follow-Ups',
+  LEDGER: 'Purchase Ledger'
 };
 
 var INVESTOR_MAP = {
@@ -1588,6 +1589,25 @@ var FOLLOWUP_MAP = {
 };
 SCHEMAS[SHEET.FOLLOWUPS] = FOLLOWUP_MAP;
 
+var LEDGER_MAP = {
+  id: 'Ledger ID',
+  ownerKey: 'Owner Key',
+  owner: 'Buyer',
+  mailing: 'Mailing Address',
+  addr: 'Property',
+  city: 'City',
+  state: 'State',
+  date: 'Purchase Date',
+  periodDays: 'Window (days)',
+  price: 'Price',
+  type: 'Property Type',
+  source: 'Source',
+  ref: 'Reference',
+  promoted: 'Added To Buyers',
+  added: 'Logged'
+};
+SCHEMAS[SHEET.LEDGER] = LEDGER_MAP;
+
 /** Columns that must be stored as plain text (zip codes, phones, IDs, dates-as-text). */
 var TEXT_COLUMNS = {};
 TEXT_COLUMNS[SHEET.INVESTORS] = ['Investor ID', 'Phone', 'POF Expires', 'Preferred Zip Codes'];
@@ -1598,6 +1618,7 @@ TEXT_COLUMNS[SHEET.JOBS] = ['Job ID', 'Deal ID'];
 TEXT_COLUMNS[SHEET.INTAKE] = ['Intake ID', 'Investor ID', 'Reference', 'Phone'];
 TEXT_COLUMNS[SHEET.OFFERS] = ['Offer ID', 'Deal ID', 'Investor ID', 'Proposed Closing Date', 'Response ID'];
 TEXT_COLUMNS[SHEET.FOLLOWUPS] = ['Follow-Up ID', 'Rule Key', 'Deal ID', 'Investor ID'];
+TEXT_COLUMNS[SHEET.LEDGER] = ['Ledger ID', 'Owner Key', 'Reference'];
 
 var DEAL_STATUSES = ['Available', 'Pending', 'Sold', 'Dead'];
 
@@ -1687,11 +1708,13 @@ var DEFAULT_SETTINGS = [
   ['INTAKE_DM_MAX_PER_RUN', '100', 'Most properties to pull per run (controls credit use).'],
   ['INTAKE_DM_MONTHLY_CAP', '1500', 'Stop pulling once this many DealMachine credits are used this month (0 = no cap).'],
   ['INTAKE_COUNTY_ON', 'TRUE', 'Find buyers in free City of Norfolk recorded-sales data.'],
-  ['INTAKE_COUNTY_DAYS', '30', 'Only county sales recorded within this many days.'],
+  ['INTAKE_COUNTY_DAYS', '90', 'Only county sales recorded within this many days.'],
   ['INTAKE_COUNTY_MIN_PRICE', '20000', 'Ignore county sales below this price.'],
+  ['INTAKE_ACTIVE_MIN_BUYS', '3', 'Serious investors only: a public-records buyer is added once they have bought at least this many properties…'],
+  ['INTAKE_ACTIVE_DAYS', '90', '…within this many days.'],
   ['INTAKE_WATCH_ON', 'TRUE', 'Find investor buyers in free public records for Hampton Roads, Richmond and Elizabeth City / Camden.'],
   ['INTAKE_WATCH_AREAS', '', 'Which public-records areas to watch (blank = all).'],
-  ['INTAKE_WATCH_DAYS', '45', 'Live sales feeds (York County): only sales recorded within this many days.'],
+  ['INTAKE_WATCH_DAYS', '90', 'Live sales feeds (York County): only sales recorded within this many days.'],
   ['INTAKE_WATCH_MIN_PRICE', '10000', 'Live sales feeds: ignore sales below this price ($0 family / trust transfers).'],
   ['INTAKE_WATCH_INDIVIDUALS', 'TRUE', 'Also include individual buyers who don\'t live at the property (absentee = investor). Companies / LLCs / trusts are always included.'],
   ['INTAKE_COUNTY_ENTITIES_ONLY', 'TRUE', 'Only company / LLC / trust buyers (free records cannot show cash vs. financed).'],
@@ -4331,6 +4354,14 @@ function runIntakeSources_(sources, sendSummary) {
       results[k] = { status: 'error', note: String(e && e.message || e), added: ctx.cur.added, updated: ctx.cur.updated };
     }
   });
+  if (sources.indexOf('county') > -1 || sources.indexOf('watch') > -1) {
+    try {
+      var archived = ledgerCleanupLegacy_();
+      ctx.cur = { added: 0, updated: 0, duplicate: 0, skipped: 0 };
+      var lp = ledgerPromote_(ctx);
+      results.active = { status: 'ok', note: lp.buyers + ' active investors (' + lp.minBuys + '+ purchases in ' + lp.windowDays + ' days)' + (archived ? ' · ' + archived + ' one-off buyers archived' : ''), added: ctx.cur.added, updated: ctx.cur.updated };
+    } catch (e) { results.active = { status: 'error', note: String(e.message || e) }; }
+  }
   flushIntake_(ctx);
   var added = ctx.adds.length;
   var stamp = new Date().toISOString();
@@ -4395,7 +4426,8 @@ function getIntakeStatus() {
     sources: Object.keys(INTAKE_SOURCES).map(function (k) { return { key: k, label: INTAKE_SOURCES[k].label, on: bool_(s[INTAKE_SOURCES[k].setting]) }; }),
     dm: { hasKey: !!dmKey_(), keyHint: dmKey_() ? '…' + dmKey_().slice(-4) : '', creditsThisMonth: dmCreditsUsed_(), cap: parseInt(s.INTAKE_DM_MONTHLY_CAP, 10) || 0 },
     areas: DM_AREAS,
-    watch: watchStatus_()
+    watch: watchStatus_(),
+    ledger: ledgerStatus_()
   });
 }
 
@@ -4649,6 +4681,148 @@ function getInvestorHistory(investorId) {
   var responses = readTable_(SHEET.RESPONSES).rows
     .filter(function (r) { return r.investorId === investorId; });
   return toClient_({ sends: sends.reverse(), responses: responses.reverse() });
+}
+
+// ---- Ledger.gs ----
+/**
+ * Ledger.gs — "serious investors only".
+ *
+ * Every investor purchase found in public records (Norfolk, York, owner-change watch areas) is logged in
+ * the "Purchase Ledger" sheet first. A buyer only graduates to New Buyers once they have bought at least
+ * INTAKE_ACTIVE_MIN_BUYS properties within INTAKE_ACTIVE_DAYS (default: 3 in 90 days — more than 1–2
+ * properties every couple of months). Their later purchases keep extending their history.
+ *
+ * Owner-change watch areas only know that ownership changed between two data refreshes (often months
+ * apart), so for those the bar is scaled to the refresh period (e.g. 6 purchases over a 6-month refresh).
+ */
+
+// LEDGER_MAP / SHEET.LEDGER are defined in Config.gs
+
+function ledgerKey_(name, mailing) {
+  return isCompany_(name) ? 'co|' + normKey_(name) : normKey_(name) + '|' + streetKey_(String(mailing || '').split(',')[0]);
+}
+
+/** Basic investor screen before logging: no institutions / exempt types; individuals must not live there. */
+function ledgerCandidate_(s, allowIndividuals) {
+  if (!str_(s.name) || INSTITUTION_RE.test(s.name)) return false;
+  if (/government|institution|exempt|non-taxable|ground lease|church|cemetery|utility|right of way|common area/i.test(String(s.type))) return false;
+  if (isCompany_(s.name)) return true;
+  if (!allowIndividuals) return false;
+  if (/land/i.test(String(s.type))) return true;
+  var a = streetKey_(s.addr), m = streetKey_(s.mailStreet || s.mailing);
+  return !!(a && m && a !== m);
+}
+
+/** Logs purchases (each recorded once). Caller holds the lock. */
+function ledgerAdd_(ctx, sales, sourceLabel) {
+  var allowInd = bool_(getSettings_().INTAKE_WATCH_INDIVIDUALS);
+  if (!ctx.ledgerRefs) {
+    ctx.ledgerRefs = {};
+    readTable_(SHEET.LEDGER).rows.forEach(function (r) { ctx.ledgerRefs[r.ref] = true; });
+  }
+  var rows = [];
+  sales.forEach(function (s) {
+    if (!s.saleRef || ctx.ledgerRefs[s.saleRef] || !ledgerCandidate_(s, allowInd)) return;
+    ctx.ledgerRefs[s.saleRef] = true;
+    rows.push({
+      id: shortId_('P-'), ownerKey: ledgerKey_(s.name, s.mailing), owner: titleCase_(s.name), mailing: s.mailing || '', addr: titleCase_(s.addr || ''),
+      city: titleCase_(s.city || ''), state: s.state || '', date: s.date || new Date(), periodDays: s.periodDays || '', price: s.price || '',
+      type: s.type || '', source: sourceLabel, ref: s.saleRef, promoted: '', added: new Date()
+    });
+  });
+  appendObjects_(SHEET.LEDGER, rows);
+  ctx.ledgerLogged = (ctx.ledgerLogged || 0) + rows.length;
+  return rows.length;
+}
+
+/** Promotes owners who meet the active-investor bar into New Buyers. Caller holds the lock. */
+function ledgerPromote_(ctx) {
+  var s = getSettings_();
+  var minBuys = Math.max(1, parseInt(s.INTAKE_ACTIVE_MIN_BUYS, 10) || 3);
+  var windowDays = Math.max(7, parseInt(s.INTAKE_ACTIVE_DAYS, 10) || 90);
+  var t = readTable_(SHEET.LEDGER);
+  var groups = {};
+  t.rows.forEach(function (r) { (groups[r.ownerKey] = groups[r.ownerKey] || []).push(r); });
+  var promoted = 0, buyers = 0;
+  Object.keys(groups).forEach(function (k) {
+    var g = groups[k];
+    var fresh = g.filter(function (r) { return !bool_(r.promoted); });
+    if (!fresh.length) return;
+    var everPromoted = g.length !== fresh.length;
+    var qualifies = everPromoted;
+    if (!qualifies) {
+      // dated purchases: any window of `windowDays` containing ≥ minBuys
+      var dated = g.filter(function (r) { return !Number(r.periodDays); }).map(function (r) { return tms_(r.date); }).filter(Boolean).sort();
+      for (var i = 0; i + minBuys - 1 < dated.length && !qualifies; i++) {
+        if (dated[i + minBuys - 1] - dated[i] <= windowDays * 86400000) qualifies = true;
+      }
+      // owner-change watch batches: scale the bar to the refresh period
+      var batches = {};
+      g.forEach(function (r) { if (Number(r.periodDays)) { var bk = r.source + '|' + fmtDate_(asDate_(r.date) || new Date()); (batches[bk] = batches[bk] || []).push(r); } });
+      Object.keys(batches).forEach(function (bk) {
+        var b = batches[bk], period = Number(b[0].periodDays) || windowDays;
+        if (b.length >= Math.max(minBuys, Math.ceil(minBuys * period / windowDays))) qualifies = true;
+      });
+    }
+    if (!qualifies) return;
+    var sales = fresh.map(function (r) {
+      return { name: r.owner, email: '', phone: '', mailing: r.mailing, addr: r.addr, city: r.city, state: r.state,
+        date: Number(r.periodDays) ? null : asDate_(r.date), price: r.price, type: r.type, financing: '', saleRef: 'LEDGER:' + r.ref };
+    });
+    var lead = groupSales_(sales, windowDays, 'Active investor: ' + g.length + ' purchases found in public records (' + fresh[0].source + ').')[0];
+    if (!lead) return;
+    lead.criteria = 'Active investor — ' + g.length + ' purchase' + (g.length === 1 ? '' : 's') + ' logged in public records. ' + lead.criteria.replace(/^New-construction \/ land buyer\. /, '');
+    if (/land/i.test(lead.propertyTypes)) lead.criteria = 'New-construction / land buyer. ' + lead.criteria;
+    addRecordLeads_(ctx, fresh[0].source, [lead]);
+    fresh.forEach(function (r) { r.promoted = true; });
+    promoted += fresh.length; buyers++;
+  });
+  // write the promoted flags back (one column write)
+  if (promoted && t.rows.length) {
+    var byRow = {};
+    t.rows.forEach(function (r) { byRow[r._row] = r; });
+    var last = t.rows[t.rows.length - 1]._row, vals = [];
+    for (var n = 2; n <= last; n++) vals.push(byRow[n] ? (bool_(byRow[n].promoted) ? 'TRUE' : '') : '');
+    writeColumn_(SHEET.LEDGER, 'promoted', 2, vals);
+  }
+  return { buyers: buyers, purchases: promoted, minBuys: minBuys, windowDays: windowDays };
+}
+
+/**
+ * One-time cleanup after switching to "serious investors only": buyers that came from public records
+ * under the old rules, are still Pending Review, and don't meet the bar are set to Inactive (kept, never deleted).
+ */
+function ledgerCleanupLegacy_() {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('LEDGER_MIGRATED')) return 0;
+  var s = getSettings_();
+  var minBuys = Math.max(1, parseInt(s.INTAKE_ACTIVE_MIN_BUYS, 10) || 3);
+  var sources = [INTAKE_SOURCES.county.label, INTAKE_SOURCES.watch.label];
+  var n = 0;
+  readTable_(SHEET.INVESTORS).rows.forEach(function (i) {
+    if (str_(i.status) !== PENDING_REVIEW || sources.indexOf(str_(i.source)) === -1) return;
+    if ((Number(i.purchaseCount) || 0) >= minBuys) return;
+    updateObject_(SHEET.INVESTORS, i._row, { status: 'Inactive', updated: new Date(), notes: (str_(i.notes) + ' [Archived ' + fmtDate_(new Date()) + ': fewer than ' + minBuys + ' purchases — not an active investor yet]').trim() });
+    n++;
+  });
+  // longer lookbacks so the first ledger run sees a full window
+  if (String(s.INTAKE_COUNTY_DAYS) === '30') setSetting_('INTAKE_COUNTY_DAYS', '90');
+  if (String(s.INTAKE_WATCH_DAYS) === '45') setSetting_('INTAKE_WATCH_DAYS', '90');
+  props.setProperty('LEDGER_MIGRATED', new Date().toISOString());
+  return n;
+}
+
+function ledgerStatus_() {
+  var t = readTable_(SHEET.LEDGER).rows;
+  var s = getSettings_();
+  var owners = {};
+  t.forEach(function (r) { owners[r.ownerKey] = (owners[r.ownerKey] || 0) + 1; });
+  var minBuys = Math.max(1, parseInt(s.INTAKE_ACTIVE_MIN_BUYS, 10) || 3);
+  return {
+    purchases: t.length, owners: Object.keys(owners).length,
+    almost: Object.keys(owners).filter(function (k) { return owners[k] === minBuys - 1; }).length,
+    minBuys: minBuys, days: Math.max(7, parseInt(s.INTAKE_ACTIVE_DAYS, 10) || 90)
+  };
 }
 
 // ---- Matching.gs ----
@@ -5054,10 +5228,16 @@ var WATCH_SOURCES = [
   { key: 'hr800', label: 'Suffolk', kind: 'owners', provider: 'hrgeo', fips: '800', market: 'Suffolk', cadence: 'about twice a year' },
   { key: 'hr700', label: 'Newport News', kind: 'owners', provider: 'hrgeo', fips: '700', market: 'Newport News', cadence: 'about twice a year' },
   { key: 'hr093', label: 'Isle of Wight (Smithfield)', kind: 'owners', provider: 'hrgeo', fips: '093', market: 'Smithfield', cadence: 'about twice a year' },
+  { key: 'hr830', label: 'Williamsburg', kind: 'owners', provider: 'hrgeo', fips: '830', market: 'Williamsburg', cadence: 'about twice a year' },
+  { key: 'hr095', label: 'James City County', kind: 'owners', provider: 'hrgeo', fips: '095', market: 'James City County', cadence: 'about twice a year' },
+  { key: 'hr073', label: 'Gloucester County', kind: 'owners', provider: 'hrgeo', fips: '073', market: 'Gloucester', cadence: 'about twice a year' },
   { key: 'nc37139', label: 'Elizabeth City (Pasquotank Co.)', kind: 'owners', provider: 'nc', fips: '37139', market: 'Elizabeth City', cadence: 'when the state refreshes' },
-  { key: 'nc37029', label: 'Camden County, NC', kind: 'owners', provider: 'nc', fips: '37029', market: 'Camden', cadence: 'when the state refreshes' }
+  { key: 'nc37029', label: 'Camden County, NC', kind: 'owners', provider: 'nc', fips: '37029', market: 'Camden', cadence: 'when the state refreshes' },
+  { key: 'nc37053', label: 'Currituck County (Moyock)', kind: 'owners', provider: 'nc', fips: '37053', market: 'Moyock', cadence: 'when the state refreshes' },
+  { key: 'nc37143', label: 'Perquimans County, NC', kind: 'owners', provider: 'nc', fips: '37143', market: 'Hertford', cadence: 'when the state refreshes' },
+  { key: 'nc37041', label: 'Chowan County, NC', kind: 'owners', provider: 'nc', fips: '37041', market: 'Edenton', cadence: 'when the state refreshes' }
 ];
-var WATCH_NOT_AVAILABLE = 'Chesapeake, Hampton, Poquoson and Moyock (Currituck) don\'t publish owner names in any public feed — use DealMachine or a cash-buyer export sheet for those.';
+var WATCH_NOT_AVAILABLE = 'Not available from free public feeds: Chesapeake, Hampton and Poquoson (owner names withheld), Henrico, Chesterfield and Hanover (no public owner/sales feed). Cover those with a cash-buyer export sheet (PropStream, BatchLeads, county records) or DealMachine.';
 
 // ---------- shared helpers ----------
 
@@ -5236,9 +5416,8 @@ function yorkSales_(src, ctx, s) {
       type: propKind_(a.useDescription || a.classType, a.tablzone_DESC, a.currImprovementVal), financing: '', saleRef: ref
     });
   });
-  sales = investorFilter_(sales, allowInd, 'VA');
-  addRecordLeads_(ctx, INTAKE_SOURCES.watch.label, groupSales_(sales, days, 'Found in York County recorded sales (public record).'));
-  return { note: seen + ' recorded sales in ' + days + ' days', done: true };
+  var logged = ledgerAdd_(ctx, sales, INTAKE_SOURCES.watch.label);
+  return { note: seen + ' recorded sales in ' + days + ' days · ' + logged + ' new investor purchases logged', done: true };
 }
 
 /** Owner-change watch for one locality (resumable across runs). */
@@ -5273,12 +5452,10 @@ function ownerWatchStep_(src, ctx, s, deadline) {
     st.scan.lastOid = pg.lastOid;
     more = pg.more;
   }
-  sales = investorFilter_(sales, allowInd, src.provider === 'nc' ? 'NC' : 'VA');
   var periodDays = st.version ? Math.max(1, Math.round((Number(st.scan.version) - Number(st.version)) / 86400000)) : 0;
   if (sales.length) {
-    var note = 'Ownership changed in ' + src.label + ' public records between ' + fmtDate_(new Date(st.version), 'MMM d, yyyy') + ' and ' + fmtDate_(new Date(st.scan.version), 'MMM d, yyyy') + '.';
-    addRecordLeads_(ctx, INTAKE_SOURCES.watch.label, groupSales_(sales, periodDays, note));
-    st.scan.found += sales.length;
+    sales.forEach(function (x) { x.periodDays = periodDays; x.date = new Date(Number(st.scan.version)); });
+    st.scan.found += ledgerAdd_(ctx, sales, INTAKE_SOURCES.watch.label);
   }
   if (more) {
     st.scan.tmp = writeJsonFile_(st.scan.tmp, 'scan-' + src.key + '.json', next);
@@ -5295,7 +5472,7 @@ function ownerWatchStep_(src, ctx, s, deadline) {
   if (baseline) st.baselineAt = st.lastScan;
   st.scan = null;
   owSave_(src.key, st);
-  return { note: baseline ? 'baseline saved (' + st.parcels.toLocaleString() + ' parcels) — buyers appear when the data next updates' : st.lastChanges + ' investor purchases found', done: true };
+  return { note: baseline ? 'baseline saved (' + st.parcels.toLocaleString() + ' parcels) — buyers appear when the data next updates' : st.lastChanges + ' investor purchases logged (data ' + fmtDate_(new Date(Number(st.version)), 'MMM d, yyyy') + ')', done: true };
 }
 
 function watchAreas_() {
@@ -5334,6 +5511,7 @@ function runOwnerWatch() {
     var ctx = intakeCtx_();
     ctx.cur = { added: 0, updated: 0, duplicate: 0, skipped: 0 };
     var note = watchLeads_(ctx, 270000);
+    ledgerPromote_(ctx);
     flushIntake_(ctx);
     return { note: note, added: ctx.adds.length };
   });
@@ -5756,8 +5934,8 @@ function countyLeads_(ctx) {
       financing: '', saleRef: ref
     });
   });
-  addRecordLeads_(ctx, INTAKE_SOURCES.county.label, groupSales_(sales, days, 'Found in City of Norfolk recorded sales (public record).'));
-  return rows.length + ' Norfolk sales in the last ' + days + ' days, ' + kept + (entitiesOnly ? ' to companies / LLCs' : ' kept') + '.';
+  var logged = ledgerAdd_(ctx, sales, INTAKE_SOURCES.county.label);
+  return rows.length + ' Norfolk sales in the last ' + days + ' days, ' + kept + (entitiesOnly ? ' to companies / LLCs' : ' kept') + ' · ' + logged + ' new investor purchases logged.';
 }
 
 // ---------- client API ----------
@@ -6438,7 +6616,7 @@ function getVerificationCenter() {
       { attributes: { PID: 3, ownerName: 'STANLEY MARTIN HOMES LLC', ownerAddress1: '11710 PLAZA AMERICA DR STE 1100', ownerCity: 'RESTON', ownerState: 'VA', ownerZip: '20190', ADDRESS: '316 AUGUSTA WAY', transferDate: Date.now() - 11 * 86400000, consideration: 628758, useDescription: 'Vacant Residential', currImprovementVal: 0 } },
       { attributes: { PID: 4, ownerName: 'GRISTMILL PLAZA LLC', ownerAddress1: '2110 DULLES TOWN CIRCLE STE 234', ownerCity: 'DULLES', ownerState: 'VA', ownerZip: '20166', ADDRESS: '100 GRISTMILL PLZ', transferDate: Date.now() - 14 * 86400000, consideration: 2650000, useDescription: 'Commercial', currImprovementVal: 1800000 } },
       { attributes: { PID: 5, ownerName: 'ATW HOLDINGS LLC', ownerAddress1: '136 ANDREWS XING', ownerCity: 'YORKTOWN', ownerState: 'VA', ownerZip: '23692', ADDRESS: '116 PRODUCTION DR', transferDate: Date.now() - 14 * 86400000, consideration: 280000, useDescription: 'Commercial', currImprovementVal: 200000 } }] } };
-    if (url.indexOf('geo.hrsd.com') > -1) return { code: 200, body: url.indexOf('outStatistics') > -1 ? { features: ['810', '740', '800', '700', '093'].map(f => ({ attributes: { FIPS: f, v: Date.parse('2026-02-27') } })) } : { features: url.indexOf('OBJECTID%20%3E%200') > -1 || url.indexOf('OBJECTID+%3E+0') > -1 ? [{ attributes: { OBJECTID: 1, PARCELID: 'A1', OWNERNME1: 'SAMPLE OWNER', PSTLADDRESS: '1 ELM ST', IMPVALUE: 1 } }] : [] } };
+    if (url.indexOf('geo.hrsd.com') > -1) return { code: 200, body: url.indexOf('outStatistics') > -1 ? { features: ['810', '740', '800', '700', '093', '830', '095', '073'].map(f => ({ attributes: { FIPS: f, v: Date.parse('2026-02-27') } })) } : { features: url.indexOf('OBJECTID%20%3E%200') > -1 || url.indexOf('OBJECTID+%3E+0') > -1 ? [{ attributes: { OBJECTID: 1, PARCELID: 'A1', OWNERNME1: 'SAMPLE OWNER', PSTLADDRESS: '1 ELM ST', IMPVALUE: 1 } }] : [] } };
     if (url.indexOf('nconemap.gov') > -1) return { code: 200, body: url.indexOf('outStatistics') > -1 ? { features: [{ attributes: { v: Date.parse('2026-05-30') } }] } : { features: url.indexOf('objectid%20%3E%200') > -1 ? [{ attributes: { objectid: 1, parno: 'P1', ownname: 'SAMPLE OWNER', siteadd: '00105 PEARL ST', improvval: 1 } }] : [] } };
     if (url.indexOf('k3vhq11XkBNeeOfM') > -1) return { code: 200, body: url.indexOf('/query') > -1 ? { features: url.indexOf('OBJECTID%20%3E%200') > -1 ? [{ attributes: { OBJECTID: 1, ParcelID: 1, OwnerName: 'SAMPLE OWNER', AsrLocationBldgNo: '1', DwellingValue: 1 } }] : [] } : { editingInfo: { lastEditDate: Date.parse('2026-11-21') } } };
     if (url.indexOf('api.v2.dealmachine.com') === -1) return { code: 404, body: '{}' };
@@ -7321,7 +7499,7 @@ const SRC_HELP = {
   cash: 'Investors who recently bought with cash in your area. Export recent cash sales from PropStream, BatchLeads, PropertyRadar, DealMachine or your county records into a Google Sheet. Each day the system groups the sales by owner and builds their buy box from what they bought. Owners without an email are held until you add one (skip trace).',
   dealmachine: 'Active investors found in recorded sales across all your areas: properties that sold in the last few days where the buyer paid cash (no mortgage) or used a hard-money lender and doesn\'t live there, plus builders buying residential land and lots. DealMachine also supplies the owner\'s phone and email. Each run only pulls new sales, so credits stay low.',
   watch: '',
-  county: 'Free public records from the City of Norfolk: every recorded property sale with the buyer, date and price, updated daily. Free records don\'t show whether a mortgage was used, so by default only company / LLC / trust buyers are added. They usually have no email, so skip trace them before approving.',
+  county: 'Free public records from the City of Norfolk: every recorded property sale with the buyer, date and price, updated daily. Each investor purchase is logged in the "Purchase Ledger" sheet. A buyer is only added once they reach the "serious investors only" rule in the Public Records card (default: 3+ purchases in 90 days). They usually have no email, so skip trace them before approving.',
   gmail: 'People who email you asking to get on your list ("add me to your buyers list", "send me deals", "cash buyer"…). Their name, phone, markets, price range and strategy are read from the email.'
 };
 VIEWS.intake = {
@@ -7387,12 +7565,17 @@ VIEWS.intake = {
         '<table class="t" style="margin-top:4px"><tbody>' + ((st.watch || {}).areas || []).map(a => '<tr><td style="padding:7px 6px;width:24px"><span class="chip' + (a.on ? ' on' : '') + '" data-act="chip" data-watch="' + esc(a.key) + '" style="padding:2px 8px">' + (a.on ? '✓' : '+') + '</span></td>' +
           '<td style="padding:7px 6px"><b>' + esc(a.label) + '</b><div class="small muted">' + (a.kind === 'sales' ? 'Live sales feed · daily' : 'Owner-change watch · refreshes ' + esc(a.cadence)) + '</div></td>' +
           '<td class="small" style="padding:7px 6px;color:' + (/error/.test(a.lastNote) ? '#FF9A95' : 'var(--text-2)') + '">' + esc(a.lastNote || 'not run yet') + (a.dataDate ? '<div class="muted">data as of ' + esc(a.dataDate) + '</div>' : '') + '</td></tr>').join('') + '</tbody></table>' +
+        (() => { const L2 = st.ledger || {}, a = last.active; return '<div style="border:1px solid var(--line);border-radius:10px;padding:12px 14px"><div style="font-weight:600;margin-bottom:4px">Serious investors only</div>' +
+          '<div class="small muted">Every investor purchase is logged in the "Purchase Ledger" sheet (homeowners, family trusts, banks, churches and government are never logged). A buyer is only added for review once they make <b style="color:var(--text)">' + (L2.minBuys || 3) + '+ purchases within ' + (L2.days || 90) + ' days</b>. Owner-watch areas refresh every few months, so the bar is scaled to that period (e.g. 7+ new parcels in a 6-month refresh).</div>' +
+          '<div class="grid g3" style="margin-top:8px">' + cfg('INTAKE_ACTIVE_MIN_BUYS', 'Minimum purchases', 'number') + cfg('INTAKE_ACTIVE_DAYS', 'Within (days)', 'number') +
+          '<div class="field"><label>Ledger</label><div class="small" style="padding:6px 0">' + (L2.purchases || 0).toLocaleString() + ' purchases · ' + (L2.owners || 0).toLocaleString() + ' investors<div class="muted">' + (L2.almost || 0) + ' one purchase away</div></div></div></div>' +
+          (a ? '<div class="small muted">Last run: <b style="color:var(--text)">' + (a.added || 0) + ' serious investor' + (a.added === 1 ? '' : 's') + ' added</b>' + (a.updated ? ', ' + a.updated + ' updated' : '') + (a.note ? ' · ' + esc(a.note) : '') + '</div>' : '') + '</div>'; })() +
         '<div class="grid g3">' + cfg('INTAKE_WATCH_DAYS', 'Live feeds: sold within (days)', 'number') + cfg('INTAKE_WATCH_MIN_PRICE', 'Min. sale price', 'number') + yn('INTAKE_WATCH_INDIVIDUALS', 'Include individual investors') + '</div>' +
         '<div class="small muted">' + esc(((st.watch || {}).notAvailable) || '') + ' Free records never show whether a purchase was cash.</div>' +
         '<div class="row"><button class="btn sm primary" data-act="intakeSave" data-src="watch">Save</button></div>') +
       srcCard('county', 'Norfolk County Records (Free)',
         '<div class="grid g3">' + cfg('INTAKE_COUNTY_DAYS', 'Sold within (days)', 'number') + cfg('INTAKE_COUNTY_MIN_PRICE', 'Min. price', 'number') + yn('INTAKE_COUNTY_ENTITIES_ONLY', 'Companies / LLCs only') + '</div>' +
-        '<div class="small muted">Other localities in your areas (Virginia Beach, Chesapeake, Richmond, Henrico, Pasquotank…) don\'t publish buyer names in a form that can be pulled automatically, so DealMachine covers them.</div>' +
+        '<div class="small muted">Purchases count toward the "serious investors only" rule in the Public Records card.</div>' +
         '<div class="row"><button class="btn sm primary" data-act="intakeSave" data-src="county">Save</button></div>') +
       '</div>';
     h += '<div class="grid g2" style="margin-bottom:18px;align-items:start">' +

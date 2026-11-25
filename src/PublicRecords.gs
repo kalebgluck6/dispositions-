@@ -399,8 +399,8 @@ function countyLeads_(ctx) {
       financing: '', saleRef: ref
     });
   });
-  addRecordLeads_(ctx, INTAKE_SOURCES.county.label, groupSales_(sales, days, 'Found in City of Norfolk recorded sales (public record).'));
-  return rows.length + ' Norfolk sales in the last ' + days + ' days, ' + kept + (entitiesOnly ? ' to companies / LLCs' : ' kept') + '.';
+  var logged = ledgerAdd_(ctx, sales, INTAKE_SOURCES.county.label);
+  return rows.length + ' Norfolk sales in the last ' + days + ' days, ' + kept + (entitiesOnly ? ' to companies / LLCs' : ' kept') + ' · ' + logged + ' new investor purchases logged.';
 }
 
 // ---------- client API ----------

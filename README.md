@@ -283,7 +283,7 @@ Open **New Buyers** in the app. Turn on the sources you want and click **Turn on
 Open **New Buyers** and click **Turn on morning + night intake**. The default times are 6 AM and 7 PM, and you can change them. Two sources pull active investors from recorded sales.
 
 ### DealMachine: all your areas
-Covers 22 localities: Hampton Roads (Virginia Beach, Norfolk, Chesapeake, Portsmouth, Suffolk, Hampton, Newport News, **Poquoson**, York, Williamsburg, James City, Isle of Wight, Gloucester), **Richmond** (Richmond City, Henrico, Chesterfield, Hanover) and **Elizabeth City, NC** (Pasquotank, Camden, Currituck, Perquimans, Chowan). Click a chip to add or remove an area.
+Covers 22 localities through DealMachine (needs an API key): Hampton Roads (Virginia Beach, Norfolk, Chesapeake, Portsmouth, Suffolk, Hampton, Newport News, **Poquoson**, York, Williamsburg, James City, Isle of Wight, Gloucester), **Richmond** (Richmond City, Henrico, Chesterfield, Hanover) and **Elizabeth City, NC** (Pasquotank, Camden, Currituck, Perquimans, Chowan). Click a chip to add or remove an area. Without DealMachine, the free public records below cover 16 of these.
 
 Each run finds properties that **sold in the last 14 days** (adjustable) where the buyer:
 * paid **cash**: no mortgage on the property, and the owner doesn't live there;
@@ -297,36 +297,31 @@ Sales by the same owner are combined into one buyer, and the buy box comes from 
 **Credits:** DealMachine charges 1 credit per property and 1 per contact, and never charges twice for the same record in a month. Each run only processes sales it hasn't seen before. You control spend with **Max properties per run** (shared fairly between cash, hard-money and land searches) and **Monthly credit limit**. **Preview matches (free)** shows how many sales match right now without using credits.
 
 ### Free public records: Hampton Roads, Richmond & NE North Carolina
-Turned on by default in **New Buyers → Public Records**. Every source applies the same investor filter:
-* **Kept:** companies, LLCs and investment trusts.
-* **Individuals:** kept only if they don't live at the property **and** show a strong signal: 2+ purchases, land, commercial or multi-family, or an out-of-state mailing address. A new homeowner's mailing address often still shows their previous home, so "doesn't live there" alone isn't enough.
-* **Skipped:** homeowners, family trusts living in the home, government, banks (foreclosures), churches and HOAs.
-* **Tags:** purchases are labeled **Residential**, **Commercial** (tagged *Commercial Buyer*) or **Land** (tagged *Developer*), and repeat buyers are grouped and ranked.
+Turned on by default in **New Buyers → Public Records**.
+
+**Serious investors only.** Every investor purchase found is written to the **Purchase Ledger** sheet. A buyer is added to your review queue only after they make **3 or more purchases within 90 days**. You can change both numbers on the Public Records card.
+* Owner-change areas refresh only every few months, so the bar scales with the refresh period. For example, a 6-month refresh needs 7 or more new parcels.
+* Once a buyer qualifies, their later purchases keep being added to their history.
+* **Logged:** companies, LLCs and investment trusts; individuals only for land or when they don't live at the property.
+* **Never logged:** homeowners, family trusts living in the home, government, banks (foreclosures), churches and HOAs.
+* **Tags:** purchases are labeled **Residential**, **Commercial** (tagged *Commercial Buyer*) or **Land** (tagged *Developer*).
+* **One-time cleanup:** pending buyers added under the old one-purchase rule are moved to Inactive. They stay in the sheet with a note.
 
 | Area | Source | How buyers are found |
 |---|---|---|
 | Norfolk | City of Norfolk open data | Live recorded sales (buyer, date, price) |
 | York County / Yorktown | York County land-records layer | Live recorded sales with buyer, mailing address, date and price. Bulk deeds that repeat one total price on every parcel are split across the parcels. |
-| Richmond | City of Richmond parcel owners (updated about weekly) | Owner-change watch |
-| Virginia Beach, Portsmouth, Suffolk, Newport News, Isle of Wight (Smithfield) | HRGEO Hampton Roads regional parcels (refreshed about twice a year) | Owner-change watch |
-| Elizabeth City (Pasquotank), Camden | NC OneMap statewide parcels | Owner-change watch |
+| Richmond City | City of Richmond parcel owners (updated about weekly) | Owner-change watch |
+| Virginia Beach, Portsmouth, Suffolk, Newport News, Isle of Wight (Smithfield), Williamsburg, James City County, Gloucester County | HRGEO Hampton Roads regional parcels (refreshed about twice a year) | Owner-change watch |
+| Elizabeth City (Pasquotank), Camden, Currituck (Moyock), Perquimans, Chowan | NC OneMap statewide parcels | Owner-change watch |
 
-**Owner-change watch:** these localities publish who owns each parcel but not sale dates. The app keeps a private snapshot of every parcel's owner in a Drive folder that is never shared. Each time a locality refreshes its data, every parcel with a new owner is a purchase, and the new owner is the buyer.
+**Owner-change watch:** these localities publish who owns each parcel but not sale dates. The app keeps a private snapshot of every parcel's owner in a Drive folder that is never shared. Each time a locality refreshes its data, every parcel with a new owner counts as a purchase by that new owner.
 * The **first run only saves the snapshot**, so buyers start appearing at the next refresh.
 * Large cities take a few background runs (Virginia Beach is about 157,000 parcels).
 
-**Not available for free:** Chesapeake, Hampton, Poquoson and Moyock (Currituck) don't publish owner names in any public feed. Use DealMachine or a cash-buyer export sheet for them. Free records never show whether a purchase was paid in cash.
+**Not available for free:** Chesapeake, Hampton, Poquoson, Henrico, Chesterfield and Hanover don't publish owner names or sales in a feed that can be pulled. For those, use a cash-buyer export sheet (PropStream, BatchLeads, PropertyRadar) or DealMachine. Free records never show whether a purchase was paid in cash.
 
-### Norfolk county records: free
-City of Norfolk's open data publishes every recorded transfer with the buyer, date and price, updated daily. Free records don't show whether a mortgage was used, so by default only company / LLC / trust buyers are added. Vacant-land buyers are tagged **Developer**. These buyers usually have no email, so skip trace them before approving.
-
-Why not other free sources:
-* **Zillow** forbids automated collection and doesn't publish who bought or whether they paid cash.
-* **Virginia Beach** publishes sales without buyer names.
-* **Richmond's** transfer file is 72 MB, over Google's 50 MB download limit.
-* **Hampton, Henrico, Chesapeake** and **Pasquotank** don't offer buyer data in a form that can be pulled automatically.
-
-DealMachine covers all of these.
+Why not Zillow: it forbids automated collection and doesn't publish who bought a property or whether they paid cash.
 
 The same company found by several sources (for example DealMachine and Norfolk records) is kept as **one** buyer, and each new purchase is added to their history. Everyone still goes to **Waiting for your review**.
 

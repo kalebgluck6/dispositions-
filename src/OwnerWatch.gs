@@ -26,10 +26,16 @@ var WATCH_SOURCES = [
   { key: 'hr800', label: 'Suffolk', kind: 'owners', provider: 'hrgeo', fips: '800', market: 'Suffolk', cadence: 'about twice a year' },
   { key: 'hr700', label: 'Newport News', kind: 'owners', provider: 'hrgeo', fips: '700', market: 'Newport News', cadence: 'about twice a year' },
   { key: 'hr093', label: 'Isle of Wight (Smithfield)', kind: 'owners', provider: 'hrgeo', fips: '093', market: 'Smithfield', cadence: 'about twice a year' },
+  { key: 'hr830', label: 'Williamsburg', kind: 'owners', provider: 'hrgeo', fips: '830', market: 'Williamsburg', cadence: 'about twice a year' },
+  { key: 'hr095', label: 'James City County', kind: 'owners', provider: 'hrgeo', fips: '095', market: 'James City County', cadence: 'about twice a year' },
+  { key: 'hr073', label: 'Gloucester County', kind: 'owners', provider: 'hrgeo', fips: '073', market: 'Gloucester', cadence: 'about twice a year' },
   { key: 'nc37139', label: 'Elizabeth City (Pasquotank Co.)', kind: 'owners', provider: 'nc', fips: '37139', market: 'Elizabeth City', cadence: 'when the state refreshes' },
-  { key: 'nc37029', label: 'Camden County, NC', kind: 'owners', provider: 'nc', fips: '37029', market: 'Camden', cadence: 'when the state refreshes' }
+  { key: 'nc37029', label: 'Camden County, NC', kind: 'owners', provider: 'nc', fips: '37029', market: 'Camden', cadence: 'when the state refreshes' },
+  { key: 'nc37053', label: 'Currituck County (Moyock)', kind: 'owners', provider: 'nc', fips: '37053', market: 'Moyock', cadence: 'when the state refreshes' },
+  { key: 'nc37143', label: 'Perquimans County, NC', kind: 'owners', provider: 'nc', fips: '37143', market: 'Hertford', cadence: 'when the state refreshes' },
+  { key: 'nc37041', label: 'Chowan County, NC', kind: 'owners', provider: 'nc', fips: '37041', market: 'Edenton', cadence: 'when the state refreshes' }
 ];
-var WATCH_NOT_AVAILABLE = 'Chesapeake, Hampton, Poquoson and Moyock (Currituck) don\'t publish owner names in any public feed — use DealMachine or a cash-buyer export sheet for those.';
+var WATCH_NOT_AVAILABLE = 'Not available from free public feeds: Chesapeake, Hampton and Poquoson (owner names withheld), Henrico, Chesterfield and Hanover (no public owner/sales feed). Cover those with a cash-buyer export sheet (PropStream, BatchLeads, county records) or DealMachine.';
 
 // ---------- shared helpers ----------
 
@@ -208,9 +214,8 @@ function yorkSales_(src, ctx, s) {
       type: propKind_(a.useDescription || a.classType, a.tablzone_DESC, a.currImprovementVal), financing: '', saleRef: ref
     });
   });
-  sales = investorFilter_(sales, allowInd, 'VA');
-  addRecordLeads_(ctx, INTAKE_SOURCES.watch.label, groupSales_(sales, days, 'Found in York County recorded sales (public record).'));
-  return { note: seen + ' recorded sales in ' + days + ' days', done: true };
+  var logged = ledgerAdd_(ctx, sales, INTAKE_SOURCES.watch.label);
+  return { note: seen + ' recorded sales in ' + days + ' days · ' + logged + ' new investor purchases logged', done: true };
 }
 
 /** Owner-change watch for one locality (resumable across runs). */
@@ -245,12 +250,10 @@ function ownerWatchStep_(src, ctx, s, deadline) {
     st.scan.lastOid = pg.lastOid;
     more = pg.more;
   }
-  sales = investorFilter_(sales, allowInd, src.provider === 'nc' ? 'NC' : 'VA');
   var periodDays = st.version ? Math.max(1, Math.round((Number(st.scan.version) - Number(st.version)) / 86400000)) : 0;
   if (sales.length) {
-    var note = 'Ownership changed in ' + src.label + ' public records between ' + fmtDate_(new Date(st.version), 'MMM d, yyyy') + ' and ' + fmtDate_(new Date(st.scan.version), 'MMM d, yyyy') + '.';
-    addRecordLeads_(ctx, INTAKE_SOURCES.watch.label, groupSales_(sales, periodDays, note));
-    st.scan.found += sales.length;
+    sales.forEach(function (x) { x.periodDays = periodDays; x.date = new Date(Number(st.scan.version)); });
+    st.scan.found += ledgerAdd_(ctx, sales, INTAKE_SOURCES.watch.label);
   }
   if (more) {
     st.scan.tmp = writeJsonFile_(st.scan.tmp, 'scan-' + src.key + '.json', next);
@@ -267,7 +270,7 @@ function ownerWatchStep_(src, ctx, s, deadline) {
   if (baseline) st.baselineAt = st.lastScan;
   st.scan = null;
   owSave_(src.key, st);
-  return { note: baseline ? 'baseline saved (' + st.parcels.toLocaleString() + ' parcels) — buyers appear when the data next updates' : st.lastChanges + ' investor purchases found', done: true };
+  return { note: baseline ? 'baseline saved (' + st.parcels.toLocaleString() + ' parcels) — buyers appear when the data next updates' : st.lastChanges + ' investor purchases logged (data ' + fmtDate_(new Date(Number(st.version)), 'MMM d, yyyy') + ')', done: true };
 }
 
 function watchAreas_() {
@@ -306,6 +309,7 @@ function runOwnerWatch() {
     var ctx = intakeCtx_();
     ctx.cur = { added: 0, updated: 0, duplicate: 0, skipped: 0 };
     var note = watchLeads_(ctx, 270000);
+    ledgerPromote_(ctx);
     flushIntake_(ctx);
     return { note: note, added: ctx.adds.length };
   });

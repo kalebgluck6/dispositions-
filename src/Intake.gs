@@ -527,6 +527,14 @@ function runIntakeSources_(sources, sendSummary) {
       results[k] = { status: 'error', note: String(e && e.message || e), added: ctx.cur.added, updated: ctx.cur.updated };
     }
   });
+  if (sources.indexOf('county') > -1 || sources.indexOf('watch') > -1) {
+    try {
+      var archived = ledgerCleanupLegacy_();
+      ctx.cur = { added: 0, updated: 0, duplicate: 0, skipped: 0 };
+      var lp = ledgerPromote_(ctx);
+      results.active = { status: 'ok', note: lp.buyers + ' active investors (' + lp.minBuys + '+ purchases in ' + lp.windowDays + ' days)' + (archived ? ' · ' + archived + ' one-off buyers archived' : ''), added: ctx.cur.added, updated: ctx.cur.updated };
+    } catch (e) { results.active = { status: 'error', note: String(e.message || e) }; }
+  }
   flushIntake_(ctx);
   var added = ctx.adds.length;
   var stamp = new Date().toISOString();
@@ -591,7 +599,8 @@ function getIntakeStatus() {
     sources: Object.keys(INTAKE_SOURCES).map(function (k) { return { key: k, label: INTAKE_SOURCES[k].label, on: bool_(s[INTAKE_SOURCES[k].setting]) }; }),
     dm: { hasKey: !!dmKey_(), keyHint: dmKey_() ? '…' + dmKey_().slice(-4) : '', creditsThisMonth: dmCreditsUsed_(), cap: parseInt(s.INTAKE_DM_MONTHLY_CAP, 10) || 0 },
     areas: DM_AREAS,
-    watch: watchStatus_()
+    watch: watchStatus_(),
+    ledger: ledgerStatus_()
   });
 }
 

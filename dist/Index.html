@@ -1120,7 +1120,7 @@ const SRC_HELP = {
   cash: 'Investors who recently bought with cash in your area. Export recent cash sales from PropStream, BatchLeads, PropertyRadar, DealMachine or your county records into a Google Sheet. Each day the system groups the sales by owner and builds their buy box from what they bought. Owners without an email are held until you add one (skip trace).',
   dealmachine: 'Active investors found in recorded sales across all your areas: properties that sold in the last few days where the buyer paid cash (no mortgage) or used a hard-money lender and doesn\'t live there, plus builders buying residential land and lots. DealMachine also supplies the owner\'s phone and email. Each run only pulls new sales, so credits stay low.',
   watch: '',
-  county: 'Free public records from the City of Norfolk: every recorded property sale with the buyer, date and price, updated daily. Free records don\'t show whether a mortgage was used, so by default only company / LLC / trust buyers are added. They usually have no email, so skip trace them before approving.',
+  county: 'Free public records from the City of Norfolk: every recorded property sale with the buyer, date and price, updated daily. Each investor purchase is logged in the "Purchase Ledger" sheet. A buyer is only added once they reach the "serious investors only" rule in the Public Records card (default: 3+ purchases in 90 days). They usually have no email, so skip trace them before approving.',
   gmail: 'People who email you asking to get on your list ("add me to your buyers list", "send me deals", "cash buyer"…). Their name, phone, markets, price range and strategy are read from the email.'
 };
 VIEWS.intake = {
@@ -1186,12 +1186,17 @@ VIEWS.intake = {
         '<table class="t" style="margin-top:4px"><tbody>' + ((st.watch || {}).areas || []).map(a => '<tr><td style="padding:7px 6px;width:24px"><span class="chip' + (a.on ? ' on' : '') + '" data-act="chip" data-watch="' + esc(a.key) + '" style="padding:2px 8px">' + (a.on ? '✓' : '+') + '</span></td>' +
           '<td style="padding:7px 6px"><b>' + esc(a.label) + '</b><div class="small muted">' + (a.kind === 'sales' ? 'Live sales feed · daily' : 'Owner-change watch · refreshes ' + esc(a.cadence)) + '</div></td>' +
           '<td class="small" style="padding:7px 6px;color:' + (/error/.test(a.lastNote) ? '#FF9A95' : 'var(--text-2)') + '">' + esc(a.lastNote || 'not run yet') + (a.dataDate ? '<div class="muted">data as of ' + esc(a.dataDate) + '</div>' : '') + '</td></tr>').join('') + '</tbody></table>' +
+        (() => { const L2 = st.ledger || {}, a = last.active; return '<div style="border:1px solid var(--line);border-radius:10px;padding:12px 14px"><div style="font-weight:600;margin-bottom:4px">Serious investors only</div>' +
+          '<div class="small muted">Every investor purchase is logged in the "Purchase Ledger" sheet (homeowners, family trusts, banks, churches and government are never logged). A buyer is only added for review once they make <b style="color:var(--text)">' + (L2.minBuys || 3) + '+ purchases within ' + (L2.days || 90) + ' days</b>. Owner-watch areas refresh every few months, so the bar is scaled to that period (e.g. 7+ new parcels in a 6-month refresh).</div>' +
+          '<div class="grid g3" style="margin-top:8px">' + cfg('INTAKE_ACTIVE_MIN_BUYS', 'Minimum purchases', 'number') + cfg('INTAKE_ACTIVE_DAYS', 'Within (days)', 'number') +
+          '<div class="field"><label>Ledger</label><div class="small" style="padding:6px 0">' + (L2.purchases || 0).toLocaleString() + ' purchases · ' + (L2.owners || 0).toLocaleString() + ' investors<div class="muted">' + (L2.almost || 0) + ' one purchase away</div></div></div></div>' +
+          (a ? '<div class="small muted">Last run: <b style="color:var(--text)">' + (a.added || 0) + ' serious investor' + (a.added === 1 ? '' : 's') + ' added</b>' + (a.updated ? ', ' + a.updated + ' updated' : '') + (a.note ? ' · ' + esc(a.note) : '') + '</div>' : '') + '</div>'; })() +
         '<div class="grid g3">' + cfg('INTAKE_WATCH_DAYS', 'Live feeds: sold within (days)', 'number') + cfg('INTAKE_WATCH_MIN_PRICE', 'Min. sale price', 'number') + yn('INTAKE_WATCH_INDIVIDUALS', 'Include individual investors') + '</div>' +
         '<div class="small muted">' + esc(((st.watch || {}).notAvailable) || '') + ' Free records never show whether a purchase was cash.</div>' +
         '<div class="row"><button class="btn sm primary" data-act="intakeSave" data-src="watch">Save</button></div>') +
       srcCard('county', 'Norfolk County Records (Free)',
         '<div class="grid g3">' + cfg('INTAKE_COUNTY_DAYS', 'Sold within (days)', 'number') + cfg('INTAKE_COUNTY_MIN_PRICE', 'Min. price', 'number') + yn('INTAKE_COUNTY_ENTITIES_ONLY', 'Companies / LLCs only') + '</div>' +
-        '<div class="small muted">Other localities in your areas (Virginia Beach, Chesapeake, Richmond, Henrico, Pasquotank…) don\'t publish buyer names in a form that can be pulled automatically, so DealMachine covers them.</div>' +
+        '<div class="small muted">Purchases count toward the "serious investors only" rule in the Public Records card.</div>' +
         '<div class="row"><button class="btn sm primary" data-act="intakeSave" data-src="county">Save</button></div>') +
       '</div>';
     h += '<div class="grid g2" style="margin-bottom:18px;align-items:start">' +

@@ -20,7 +20,8 @@ var SHEET = {
   RESPONSES: 'Responses',
   INTAKE: 'Buyer Intake Log',
   OFFERS: 'Offers',
-  FOLLOWUPS: 'Follow-Ups'
+  FOLLOWUPS: 'Follow-Ups',
+  LEDGER: 'Purchase Ledger'
 };
 
 var INVESTOR_MAP = {
@@ -255,6 +256,25 @@ var FOLLOWUP_MAP = {
 };
 SCHEMAS[SHEET.FOLLOWUPS] = FOLLOWUP_MAP;
 
+var LEDGER_MAP = {
+  id: 'Ledger ID',
+  ownerKey: 'Owner Key',
+  owner: 'Buyer',
+  mailing: 'Mailing Address',
+  addr: 'Property',
+  city: 'City',
+  state: 'State',
+  date: 'Purchase Date',
+  periodDays: 'Window (days)',
+  price: 'Price',
+  type: 'Property Type',
+  source: 'Source',
+  ref: 'Reference',
+  promoted: 'Added To Buyers',
+  added: 'Logged'
+};
+SCHEMAS[SHEET.LEDGER] = LEDGER_MAP;
+
 /** Columns that must be stored as plain text (zip codes, phones, IDs, dates-as-text). */
 var TEXT_COLUMNS = {};
 TEXT_COLUMNS[SHEET.INVESTORS] = ['Investor ID', 'Phone', 'POF Expires', 'Preferred Zip Codes'];
@@ -265,6 +285,7 @@ TEXT_COLUMNS[SHEET.JOBS] = ['Job ID', 'Deal ID'];
 TEXT_COLUMNS[SHEET.INTAKE] = ['Intake ID', 'Investor ID', 'Reference', 'Phone'];
 TEXT_COLUMNS[SHEET.OFFERS] = ['Offer ID', 'Deal ID', 'Investor ID', 'Proposed Closing Date', 'Response ID'];
 TEXT_COLUMNS[SHEET.FOLLOWUPS] = ['Follow-Up ID', 'Rule Key', 'Deal ID', 'Investor ID'];
+TEXT_COLUMNS[SHEET.LEDGER] = ['Ledger ID', 'Owner Key', 'Reference'];
 
 var DEAL_STATUSES = ['Available', 'Pending', 'Sold', 'Dead'];
 
@@ -354,11 +375,13 @@ var DEFAULT_SETTINGS = [
   ['INTAKE_DM_MAX_PER_RUN', '100', 'Most properties to pull per run (controls credit use).'],
   ['INTAKE_DM_MONTHLY_CAP', '1500', 'Stop pulling once this many DealMachine credits are used this month (0 = no cap).'],
   ['INTAKE_COUNTY_ON', 'TRUE', 'Find buyers in free City of Norfolk recorded-sales data.'],
-  ['INTAKE_COUNTY_DAYS', '30', 'Only county sales recorded within this many days.'],
+  ['INTAKE_COUNTY_DAYS', '90', 'Only county sales recorded within this many days.'],
   ['INTAKE_COUNTY_MIN_PRICE', '20000', 'Ignore county sales below this price.'],
+  ['INTAKE_ACTIVE_MIN_BUYS', '3', 'Serious investors only: a public-records buyer is added once they have bought at least this many properties…'],
+  ['INTAKE_ACTIVE_DAYS', '90', '…within this many days.'],
   ['INTAKE_WATCH_ON', 'TRUE', 'Find investor buyers in free public records for Hampton Roads, Richmond and Elizabeth City / Camden.'],
   ['INTAKE_WATCH_AREAS', '', 'Which public-records areas to watch (blank = all).'],
-  ['INTAKE_WATCH_DAYS', '45', 'Live sales feeds (York County): only sales recorded within this many days.'],
+  ['INTAKE_WATCH_DAYS', '90', 'Live sales feeds (York County): only sales recorded within this many days.'],
   ['INTAKE_WATCH_MIN_PRICE', '10000', 'Live sales feeds: ignore sales below this price ($0 family / trust transfers).'],
   ['INTAKE_WATCH_INDIVIDUALS', 'TRUE', 'Also include individual buyers who don\'t live at the property (absentee = investor). Companies / LLCs / trusts are always included.'],
   ['INTAKE_COUNTY_ENTITIES_ONLY', 'TRUE', 'Only company / LLC / trust buyers (free records cannot show cash vs. financed).'],
