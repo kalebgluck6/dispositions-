@@ -296,6 +296,25 @@ Sales by the same owner are combined into one buyer, and the buy box comes from 
 
 **Credits:** DealMachine charges 1 credit per property and 1 per contact, and never charges twice for the same record in a month. Each run only processes sales it hasn't seen before. You control spend with **Max properties per run** (shared fairly between cash, hard-money and land searches) and **Monthly credit limit**. **Preview matches (free)** shows how many sales match right now without using credits.
 
+### Automatic skip trace (BatchData)
+Buyers from public records usually come without an email. Connect BatchData once, and every buyer missing an email is skip traced automatically after each morning and night run. You don't have to do anything by hand.
+
+1. Create a BatchData account at app.batchdata.com and add funds (pay as you go).
+2. In BatchData go to **Settings → API Tokens**, create a token with Skip Trace access, and copy it.
+3. In the app, open **New Buyers → Automatic Skip Trace**, paste the token and click **Save & test**. The token is stored privately in your Google script, never in the spreadsheet.
+
+What gets filled in:
+* **Email:** the best one, preferring addresses BatchData has verified.
+* **Phone:** the best one, preferring mobiles that aren't on the Do Not Call list. Numbers on the federal TCPA blocklist are left out.
+* **Contact person:** for an LLC, the person behind it.
+* **Notes:** other emails and phones, any DNC numbers, and a warning if the person is a known TCPA litigator.
+
+How it runs and what it costs:
+* Each buyer is skip traced automatically **once**. Click **Skip trace** next to a buyer to try again.
+* LLCs are looked up first at the property they bought, then at their mailing address.
+* BatchData only charges for matches. You set **Max buyers per run** and a **Monthly match limit**, and the card shows how many matches you've used this month.
+* By default, approved (Active) buyers missing an email are also skip traced. You can turn that off on the card.
+
 ### Free public records: Hampton Roads, Richmond & NE North Carolina
 Turned on by default in **New Buyers → Public Records**.
 

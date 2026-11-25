@@ -843,7 +843,7 @@ VIEWS.intake = {
       (pending.length ? '<div style="overflow:auto"><table class="t"><thead><tr><th style="width:36px"><input type="checkbox" data-change="intakeSelAll"' + (pending.every(p => sel.has(p.id)) ? ' checked' : '') + '></th><th>Buyer</th><th>Contact</th><th>Buy box</th><th>Why they\'re a buyer</th><th></th></tr></thead><tbody>' +
         pending.map(i => '<tr><td><input type="checkbox" data-change="intakeSel" value="' + esc(i.id) + '"' + (sel.has(i.id) ? ' checked' : '') + '></td>' +
           '<td class="nowrap"><div style="font-weight:600">' + esc((i.firstName + ' ' + i.lastName).trim() || i.company) + '</div><div class="small muted">' + esc(i.firstName || i.lastName ? i.company : '') + '</div><span class="tag">' + esc(i.source) + '</span> <span class="small muted">' + ago(i.dateAdded) + '</span></td>' +
-          '<td class="nowrap">' + (i.email ? esc(i.email) : '<span style="color:var(--amber)">⚠ Needs email</span>') + '<div class="small muted">' + esc(i.phone) + '</div>' + (i.mailingAddress ? '<div class="small muted">' + esc(i.mailingAddress) + '</div>' : '') + '</td>' +
+          '<td class="nowrap">' + (i.email ? esc(i.email) : '<span style="color:var(--amber)">⚠ Needs email</span>' + (i.skipTraceResult ? '<div class="small muted">Skip trace: ' + esc(i.skipTraceResult) + '</div>' : '') + '<div><button class="btn sm ghost" style="padding:2px 8px;margin-top:3px" data-act="skipTraceOne" data-id="' + esc(i.id) + '">Skip trace</button></div>') + '<div class="small muted">' + esc(i.phone) + '</div>' + (i.mailingAddress ? '<div class="small muted">' + esc(i.mailingAddress) + '</div>' : '') + '</td>' +
           '<td class="small">' + (i.markets ? '<div>' + esc(i.markets) + '</div>' : '') + ((isNum(i.minPrice) && i.minPrice !== '') || (isNum(i.maxPrice) && i.maxPrice !== '') ? '<div>' + short$(i.minPrice || 0) + ' – ' + (i.maxPrice !== '' ? short$(i.maxPrice) : 'any') + '</div>' : '') +
           '<div class="muted">' + esc(list(i.propertyTypes).join(', ')) + '</div><div>' + list(i.categories).map(c => '<span class="tag">' + esc(c) + '</span>').join('') + '</div></td>' +
           '<td class="small" style="max-width:340px;color:var(--text-2)">' + esc(i.purchases || i.criteria || i.notes || '').slice(0, 260) + '</td>' +
@@ -865,6 +865,20 @@ VIEWS.intake = {
     const regions = [];
     (st.areas || []).forEach(a => { if (!regions.includes(a.region)) regions.push(a.region); });
     const yn = (key, label) => field(label, '<select data-cfg="' + key + '">' + [['TRUE', 'Yes'], ['FALSE', 'No']].map(o => '<option value="' + o[0] + '"' + (String(v[key]).toUpperCase() === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>');
+    // automatic skip trace
+    {
+      const sk = st.skipTrace || {}, lr = (st.lastResult || {}).skiptrace;
+      h += '<div class="card" data-src="skiptrace" style="margin-bottom:18px"><div class="hd"><h3>Automatic Skip Trace (BatchData)</h3><div style="flex:1"></div>' +
+        (sk.hasKey ? '<label class="check"><input type="checkbox" data-change="skipToggle"' + (sk.on ? ' checked' : '') + '> ' + (sk.on ? 'On' : 'Off') + '</label>' : '<span class="tag" style="color:var(--amber)">Not connected</span>') + '</div>' +
+        '<div class="bd stack"><div class="small muted">Buyers from public records usually come without an email. After every morning and night run, each new buyer missing an email is skip traced automatically. The best email, best phone and the contact person behind an LLC are filled in, and the rest are kept in the buyer\'s notes. Numbers on the federal TCPA blocklist are left out. BatchData only charges for matches.</div>' +
+        '<div class="field"><label>BatchData API token ' + (sk.hasKey ? '<span style="color:var(--accent-2)">· connected (' + esc(sk.keyHint) + ')</span>' : '') + '</label><div class="row" style="flex-wrap:nowrap"><input type="password" id="bdKey" autocomplete="off" placeholder="' + (sk.hasKey ? 'Paste a new token to replace it' : 'Paste your API token') + '"><button class="btn sm primary" data-act="bdSaveKey">Save & test</button></div>' +
+          '<div class="hint">At <a href="https://app.batchdata.com" target="_blank">app.batchdata.com</a> → Settings → API Tokens → create a token with Skip Trace access and copy it here. It\'s stored privately in your Google script, never in the spreadsheet.</div></div>' +
+        '<div class="grid g4">' + cfg('SKIPTRACE_MAX_PER_RUN', 'Max buyers per run', 'number') + cfg('SKIPTRACE_MONTHLY_CAP', 'Monthly match limit (0 = none)', 'number') + yn('SKIPTRACE_ACTIVE_TOO', 'Also approved buyers missing an email') +
+          '<div class="field"><label>Matches this month</label><div style="padding:9px 0;font-size:15px">' + (sk.matchesThisMonth || 0) + (sk.cap ? ' <span class="muted">of ' + sk.cap + '</span>' : '') + '</div></div></div>' +
+        '<div class="row"><button class="btn sm primary" data-act="intakeSave" data-src="skiptrace">Save</button><button class="btn sm" data-act="skipTraceAll"' + (sk.hasKey && sk.waiting ? '' : ' disabled') + '>Skip trace ' + (sk.waiting || 0) + ' buyer' + (sk.waiting === 1 ? '' : 's') + ' missing an email now</button></div>' +
+        (lr && lr.status === 'error' ? '<div class="small" style="color:#FF9A95">Last run error: ' + esc(lr.note) + '</div>' : sk.last && sk.last.note ? '<div class="small muted">Last skip trace (' + esc(ago(sk.last.at)) + '): ' + esc(sk.last.note) + '</div>' : '') +
+        '</div></div>';
+    }
     h += '<div class="grid" style="margin-bottom:18px;grid-template-columns:1.35fr 1fr;align-items:start">' +
       srcCard('dealmachine', 'DealMachine: Active Cash, Hard-Money & Land Buyers',
         '<div class="field"><label>DealMachine API key ' + (dm.hasKey ? '<span style="color:var(--accent-2)">· connected (' + esc(dm.keyHint) + ')</span>' : '') + '</label><div class="row" style="flex-wrap:nowrap"><input type="password" id="dmKey" autocomplete="off" placeholder="' + (dm.hasKey ? 'Paste a new key to replace it' : 'dm_sk_live_…') + '"><button class="btn sm primary" data-act="dmSaveKey">Save & test</button></div>' +
@@ -918,6 +932,16 @@ VIEWS.intake = {
   },
   mount() { if (!S.intake) api('getIntakeStatus').then(st => { S.intake = st; if (S.view === 'intake') render(); }).catch(fail); }
 };
+async function skipTraceCall(el, ids) {
+  const old = el.innerHTML; el.disabled = true; el.innerHTML = '<span class="spinner"></span> Skip tracing…';
+  try {
+    const r = await api('skipTraceNow', ids);
+    S.intake = r.status; S.investors = await api('listInvestors');
+    const x = r.result;
+    toast(ids.length === 1 ? (x.emails ? 'Email found and added.' : x.phones ? 'Phone found, but no email.' : 'No match found for this buyer.') : esc(x.note || 'Done.'), x.emails ? '' : 'warn');
+    render();
+  } catch (e) { fail(e); el.disabled = false; el.innerHTML = old; }
+}
 const INTAKE_KEYS = { form: 'INTAKE_FORM_ON', sheet: 'INTAKE_SHEET_ON', cash: 'INTAKE_CASH_ON', gmail: 'INTAKE_GMAIL_ON', dealmachine: 'INTAKE_DM_ON', county: 'INTAKE_COUNTY_ON', watch: 'INTAKE_WATCH_ON' };
 
 async function intakeStatus(ids, status) {
@@ -1490,6 +1514,15 @@ const ACT = {
     if (navigator.clipboard) navigator.clipboard.writeText(i.value).then(done).catch(() => { try { document.execCommand('copy'); done(); } catch (e) { toast('Select the link and copy it.', 'warn'); } });
     else { try { document.execCommand('copy'); done(); } catch (e) { toast('Select the link and copy it.', 'warn'); } }
   },
+  bdSaveKey: async el => {
+    const k = $('#bdKey').value.trim();
+    if (!k) return toast('Paste your BatchData API token first.', 'warn');
+    el.disabled = true; el.innerHTML = '<span class="spinner"></span> Testing…';
+    try { S.intake = await api('saveSkipTraceKey', k); toast('BatchData connected. New buyers will be skip traced automatically.'); render(); }
+    catch (e) { fail(e); el.disabled = false; el.textContent = 'Save & test'; }
+  },
+  skipTraceAll: async el => skipTraceCall(el, []),
+  skipTraceOne: async el => skipTraceCall(el, [el.dataset.id]),
   dmSaveKey: async el => {
     const k = $('#dmKey').value.trim();
     if (!k) return toast('Paste your DealMachine API key first.', 'warn');
@@ -1674,6 +1707,9 @@ const CHANGE = {
   distNum: el => { DIST.audience[el.name] = +el.value || 0; refreshAudience(); },
   intakeSel: el => { el.checked ? S.intakeSel.add(el.value) : S.intakeSel.delete(el.value); render(); },
   intakeSelAll: el => { S.investors.filter(i => i.status === 'Pending Review').forEach(i => el.checked ? S.intakeSel.add(i.id) : S.intakeSel.delete(i.id)); render(); },
+  skipToggle: async el => {
+    try { S.settings = await api('saveSettings', { SKIPTRACE_ON: el.checked ? 'TRUE' : 'FALSE' }); S.intake.skipTrace.on = el.checked; render(); } catch (e) { fail(e); }
+  },
   intakeToggle: async el => {
     const vals = {}; vals[el.dataset.key] = el.checked ? 'TRUE' : 'FALSE';
     try { S.settings = await api('saveSettings', vals); S.intake.sources.forEach(x => { if (INTAKE_KEYS[x.key] === el.dataset.key) x.on = el.checked; }); render(); } catch (e) { fail(e); }

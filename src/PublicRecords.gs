@@ -113,6 +113,7 @@ function groupSales_(sales, days, sourceNote) {
         (landBuys ? ' (' + landBuys + ' land/lot' + (landBuys === 1 ? '' : 's') + ')' : '') + how + ' in the last ' + days + ' days' +
         (prices.length ? ', ' + money_(Math.min.apply(null, prices)) + (prices.length > 1 ? '–' + money_(Math.max.apply(null, prices)) : '') : '') + '.',
       purchases: summary, purchaseCount: g.buys.length, lastPurchase: g.buys[0].date ? fmtDate_(g.buys[0].date) : '',
+      lastPurchaseAddress: [titleCase_(g.buys[0].addr), titleCase_(g.buys[0].city), String(g.buys[0].state || '').toUpperCase() + (g.buys[0].zip ? ' ' + g.buys[0].zip : '')].filter(function (x) { return str_(x); }).join(', '),
       notes: notes.join(' '),
       _refs: g.buys.map(function (b) { return b.saleRef; })
     };

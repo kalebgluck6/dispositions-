@@ -74,7 +74,10 @@ var INVESTOR_MAP = {
   defaults: 'Contract Defaults',
   reliability: 'Reliability Rating',
   heat: 'Heat Score',
-  tierChanged: 'Tier Changed On'
+  tierChanged: 'Tier Changed On',
+  lastPurchaseAddress: 'Last Purchase Address',
+  skipTraced: 'Skip Traced On',
+  skipTraceResult: 'Skip Trace Result'
 };
 
 var DEAL_MAP = {
@@ -385,6 +388,10 @@ var DEFAULT_SETTINGS = [
   ['INTAKE_COUNTY_MIN_PRICE', '20000', 'Ignore county sales below this price.'],
   ['INTAKE_ACTIVE_MIN_BUYS', '3', 'Serious investors only: a public-records buyer is added once they have bought at least this many properties…'],
   ['INTAKE_ACTIVE_DAYS', '90', '…within this many days.'],
+  ['SKIPTRACE_ON', 'TRUE', 'Automatically skip trace new buyers who have no email (needs a BatchData API key).'],
+  ['SKIPTRACE_MAX_PER_RUN', '100', 'Most buyers skip traced in one run.'],
+  ['SKIPTRACE_MONTHLY_CAP', '500', 'Stop skip tracing after this many paid matches in a month (0 = no limit).'],
+  ['SKIPTRACE_ACTIVE_TOO', 'TRUE', 'Also skip trace approved (Active) buyers that are missing an email, not just new buyers.'],
   ['INTAKE_WATCH_ON', 'TRUE', 'Find investor buyers in free public records for Hampton Roads, Richmond and Elizabeth City / Camden.'],
   ['INTAKE_WATCH_AREAS', '', 'Which public-records areas to watch (blank = all).'],
   ['INTAKE_WATCH_DAYS', '90', 'Live sales feeds (York County): only sales recorded within this many days.'],
@@ -3916,6 +3923,7 @@ function addLead_(ctx, sourceLabel, lead, ref, details) {
     var f = {};
     if (lead.purchaseCount && Number(lead.purchaseCount) > (Number(existing.purchaseCount) || 0)) {
       f.purchases = lead.purchases; f.purchaseCount = lead.purchaseCount; f.lastPurchase = lead.lastPurchase;
+      if (lead.lastPurchaseAddress) f.lastPurchaseAddress = lead.lastPurchaseAddress;
     }
     if (email && !str_(existing.email)) f.email = email;
     if (str_(lead.phone) && !str_(existing.phone)) f.phone = str_(lead.phone);
@@ -3950,6 +3958,7 @@ function addLead_(ctx, sourceLabel, lead, ref, details) {
   rec.purchases = str_(lead.purchases);
   rec.purchaseCount = lead.purchaseCount || '';
   rec.lastPurchase = lead.lastPurchase || '';
+  rec.lastPurchaseAddress = str_(lead.lastPurchaseAddress);
   ctx.adds.push(rec);
   if (email) ctx.byEmail[email] = rec;
   if (key) ctx.byKey[key] = rec;
@@ -4253,6 +4262,7 @@ function runIntakeSources_(sources, sendSummary) {
     } catch (e) { results.active = { status: 'error', note: String(e.message || e) }; }
   }
   flushIntake_(ctx);
+  try { results.skiptrace = skipTraceRun_(); } catch (e) { results.skiptrace = { status: 'error', note: String(e.message || e) }; }
   var added = ctx.adds.length;
   var stamp = new Date().toISOString();
   setSetting_('LAST_INTAKE_RUN', stamp);
@@ -4314,6 +4324,7 @@ function getIntakeStatus() {
     pending: pending,
     log: log,
     sources: Object.keys(INTAKE_SOURCES).map(function (k) { return { key: k, label: INTAKE_SOURCES[k].label, on: bool_(s[INTAKE_SOURCES[k].setting]) }; }),
+    skipTrace: skipTraceStatus_(),
     dm: { hasKey: !!dmKey_(), keyHint: dmKey_() ? '…' + dmKey_().slice(-4) : '', creditsThisMonth: dmCreditsUsed_(), cap: parseInt(s.INTAKE_DM_MONTHLY_CAP, 10) || 0 },
     areas: DM_AREAS,
     watch: watchStatus_(),
@@ -5255,6 +5266,7 @@ function runOwnerWatch() {
     var note = watchLeads_(ctx, 270000);
     ledgerPromote_(ctx);
     flushIntake_(ctx);
+    if (ctx.adds.length) { try { skipTraceRun_(); } catch (e) { /* retried on the next intake run */ } }
     return { note: note, added: ctx.adds.length };
   });
 }
@@ -5391,6 +5403,7 @@ function groupSales_(sales, days, sourceNote) {
         (landBuys ? ' (' + landBuys + ' land/lot' + (landBuys === 1 ? '' : 's') + ')' : '') + how + ' in the last ' + days + ' days' +
         (prices.length ? ', ' + money_(Math.min.apply(null, prices)) + (prices.length > 1 ? '–' + money_(Math.max.apply(null, prices)) : '') : '') + '.',
       purchases: summary, purchaseCount: g.buys.length, lastPurchase: g.buys[0].date ? fmtDate_(g.buys[0].date) : '',
+      lastPurchaseAddress: [titleCase_(g.buys[0].addr), titleCase_(g.buys[0].city), String(g.buys[0].state || '').toUpperCase() + (g.buys[0].zip ? ' ' + g.buys[0].zip : '')].filter(function (x) { return str_(x); }).join(', '),
       notes: notes.join(' '),
       _refs: g.buys.map(function (b) { return b.saleRef; })
     };
@@ -5718,6 +5731,253 @@ function previewDealMachine() {
     out[kind] = total;
   });
   return { cash: out.cash, hardMoney: out['hard money'], land: out.land, days: parseInt(s.INTAKE_DM_DAYS, 10) || 14, counties: fips.length };
+}
+
+
+// ================= SkipTrace.gs =================
+/**
+ * Automatic skip tracing (BatchData API, v3 Property Skip Trace).
+ *
+ * Buyers found in public records usually have no email. After every intake run,
+ * buyers missing an email are skip traced automatically: the best email, the best
+ * phone and the contact person (for LLCs) are filled in, and the rest are kept in
+ * the notes. BatchData only bills for properties it matches, and the app keeps a
+ * monthly match limit. The API key is stored privately in script properties.
+ *
+ * Docs: https://developer.batchdata.com/docs/batchdata/batchdata-v3/operations/create-a-property-skip-trace
+ */
+
+var BD_SKIPTRACE_URL = 'https://api.batchdata.com/api/v3/property/skip-trace';
+var BD_BATCH = 25;   // properties per request (API allows 100; smaller keeps each call well under the timeout)
+
+function bdKey_() { return PropertiesService.getScriptProperties().getProperty('BD_API_KEY') || ''; }
+function bdMonthKey_() { return 'BD_MATCHES_' + fmtDate_(new Date(), 'yyyyMM'); }
+function bdMatchesUsed_() { return parseInt(PropertiesService.getScriptProperties().getProperty(bdMonthKey_()) || '0', 10) || 0; }
+function bdAddMatches_(n) {
+  if (!n) return;
+  PropertiesService.getScriptProperties().setProperty(bdMonthKey_(), String(bdMatchesUsed_() + Number(n)));
+}
+
+/** POSTs to BatchData. Retries once on rate limit / temporary outage. */
+function bdFetch_(body, key) {
+  key = key || bdKey_();
+  if (!key) throw new Error('Add your BatchData API key first (New Buyers → Automatic Skip Trace).');
+  for (var attempt = 0; attempt < 2; attempt++) {
+    var res = UrlFetchApp.fetch(BD_SKIPTRACE_URL, {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true, followRedirects: false,
+      headers: { Authorization: 'Bearer ' + key, Accept: 'application/json' }, payload: JSON.stringify(body)
+    });
+    var code = res.getResponseCode();
+    var json = {};
+    try { json = JSON.parse(res.getContentText() || '{}'); } catch (e) { json = {}; }
+    if (code >= 200 && code < 300) return json;
+    if ((code === 429 || code >= 502) && attempt === 0) { Utilities.sleep(8000); continue; }
+    var msg = (json.status && (json.status.message || json.status.text)) || res.getContentText().slice(0, 200);
+    throw new Error({
+      401: 'BatchData rejected the API key (' + msg + '). Copy the key again from app.batchdata.com → Settings → API Tokens.',
+      403: 'Your BatchData account can\'t use skip trace (' + msg + '). Check the token\'s permissions or your plan.',
+      402: 'Your BatchData account is out of funds. Add funds at app.batchdata.com.',
+      429: 'BatchData rate limit reached — it will continue on the next run.'
+    }[code] || ('BatchData error ' + code + ': ' + msg));
+  }
+  throw new Error('BatchData is busy right now — it will try again on the next run.');
+}
+
+/** "123 Main St, Norfolk, VA 23510" → { street, city, state, zip } (county names go to `county`). */
+function parseAddress_(s) {
+  var parts = String(s || '').split(',').map(function (x) { return x.trim(); }).filter(String);
+  if (!parts.length || !/\d/.test(parts[0])) return null;
+  var out = { street: parts[0] };
+  var last = parts.length > 1 ? parts[parts.length - 1] : '';
+  var m = last.match(/^([A-Za-z]{2})(?:\s+(\d{5})(?:-\d{4})?)?$/);
+  var city = parts.slice(1, m ? -1 : undefined).join(', ');
+  if (/\bcounty\b/i.test(city)) out.county = city.replace(/\s*county\b.*$/i, '').trim();
+  else if (city) out.city = city;
+  if (m) { out.state = m[1].toUpperCase(); if (m[2] && m[2] !== '00000') out.zip = m[2]; }
+  return out;
+}
+
+/** Buyers that still need contact info, new buyers first. */
+function skipTraceCandidates_(ids) {
+  var s = getSettings_();
+  var activeToo = bool_(s.SKIPTRACE_ACTIVE_TOO);
+  var t = readTable_(SHEET.INVESTORS);
+  var want = ids ? ids.reduce(function (m, id) { m[id] = true; return m; }, {}) : null;
+  return t.rows.filter(function (r) {
+    if (str_(r.email) || bool_(r.optOut)) return false;
+    if (want) return !!want[r.id];
+    if (str_(r.skipTraced)) return false;   // each buyer is traced automatically once
+    var st = str_(r.status);
+    return st === PENDING_REVIEW || (activeToo && st === 'Active');
+  }).sort(function (a, b) {
+    return (str_(a.status) === PENDING_REVIEW ? 0 : 1) - (str_(b.status) === PENDING_REVIEW ? 0 : 1);
+  });
+}
+
+/** Property address of the buyer's latest purchase (older rows: read from the purchase history). */
+function purchaseAddress_(inv) {
+  if (str_(inv.lastPurchaseAddress)) return str_(inv.lastPurchaseAddress);
+  var first = str_(inv.purchases).split(';')[0].split(' — ')[0].replace(/\s*\(.*$/, '').trim();
+  if (!first || !/\d/.test(first)) return '';
+  if (/,\s*[A-Z]{2}(\s+\d{5})?$/.test(first)) return first;
+  var nc = /elizabeth city|pasquotank|camden|currituck|moyock|perquimans|hertford|chowan|edenton/i.test(first + ' ' + str_(inv.markets));
+  return first + ', ' + (nc ? 'NC' : 'VA');
+}
+
+function skipTraceRequest_(inv, useMailingAsProperty) {
+  var prop = parseAddress_(purchaseAddress_(inv)), mail = parseAddress_(inv.mailingAddress);
+  if (useMailingAsProperty || !prop) { prop = mail; mail = null; }
+  if (!prop || (!prop.zip && !prop.city && !prop.county)) return null;
+  var req = { requestId: String(inv.id), propertyAddress: prop };
+  if (prop.county && !prop.state) prop.state = 'VA';
+  if (prop.county) { req.county = prop.county; req.state = prop.state; delete prop.county; }
+  if (mail && mail.street) { delete mail.county; req.mailingAddress = mail; }
+  var company = str_(inv.company) && ENTITY_RE.test(inv.company);
+  if (!company && str_(inv.lastName)) req.name = { first: str_(inv.firstName), last: str_(inv.lastName) };
+  return req;
+}
+
+/** Picks the best email / phone / contact from a v3 result item. */
+function skipTracePick_(item) {
+  var persons = (item && item.persons || []).filter(function (p) { return p && p.deceased !== true; });
+  persons.sort(function (a, b) { return (b.propertyOwner === true ? 1 : 0) - (a.propertyOwner === true ? 1 : 0); });
+  var emails = [], phones = [], contact = null, litigator = false;
+  persons.forEach(function (p) {
+    if (p.litigator) litigator = true;
+    var es = (p.emails || []).slice().sort(function (a, b) { return (b.tested ? 1 : 0) - (a.tested ? 1 : 0) || (a.rank || 99) - (b.rank || 99); });
+    es.forEach(function (e) { var v = lc_(e.email); if (isEmail_(v) && emails.indexOf(v) === -1) emails.push(v); });
+    var ps = (p.phones || []).filter(function (x) { return x.tcpa !== true; }).sort(function (a, b) {
+      var sa = (/mobile/i.test(a.type) ? 0 : 1) + (a.dnc ? 2 : 0) + (a.reachable ? 0 : 1);
+      var sb = (/mobile/i.test(b.type) ? 0 : 1) + (b.dnc ? 2 : 0) + (b.reachable ? 0 : 1);
+      return sa - sb || (a.rank || 99) - (b.rank || 99);
+    });
+    ps.forEach(function (x) {
+      var n = formatPhone_(x.number);
+      if (n && !phones.some(function (q) { return q.n === n; })) phones.push({ n: n, dnc: !!x.dnc, type: x.type || '' });
+    });
+    if (!contact && p.name && (es.length || ps.length)) contact = p.name;
+  });
+  return { emails: emails, phones: phones, contact: contact, litigator: litigator };
+}
+
+/**
+ * Skip traces buyers missing an email and writes what it finds. Caller holds the lock.
+ * ids (optional) limits it to specific buyers (manual "Skip trace" buttons).
+ */
+function skipTraceRun_(ids) {
+  var s = getSettings_();
+  var out = { status: 'ok', traced: 0, found: 0, emails: 0, phones: 0, noMatch: 0, skipped: 0, note: '' };
+  if (!bdKey_()) { out.status = 'off'; out.note = 'Add a BatchData API key to skip trace automatically.'; return out; }
+  if (!ids && !bool_(s.SKIPTRACE_ON)) { out.status = 'off'; return out; }
+  var cap = parseInt(s.SKIPTRACE_MONTHLY_CAP, 10) || 0;
+  var room = cap ? cap - bdMatchesUsed_() : Infinity;
+  if (room <= 0) { out.status = 'capped'; out.note = 'Monthly skip-trace limit reached (' + cap + ' matches). Raise it on the Skip Trace card.'; return out; }
+  var max = Math.max(1, parseInt(s.SKIPTRACE_MAX_PER_RUN, 10) || 100);
+  var cands = skipTraceCandidates_(ids).slice(0, Math.min(max, room));
+  if (!cands.length) { out.note = 'No buyers missing an email.'; return out; }
+  var t = readTable_(SHEET.INVESTORS);
+  var rowOf = {};
+  t.rows.forEach(function (r) { rowOf[r.id] = r._row; });
+  var byId = {}, results = {};
+  cands.forEach(function (c) { byId[c.id] = c; });
+
+  var pass = function (list, mailingAsProperty) {
+    var reqs = [];
+    list.forEach(function (inv) { var r = skipTraceRequest_(inv, mailingAsProperty); if (r) reqs.push(r); });
+    for (var i = 0; i < reqs.length; i += BD_BATCH) {
+      var chunk = reqs.slice(i, i + BD_BATCH);
+      var json = bdFetch_({ requests: chunk, options: { includeTCPABlacklistedPhones: false, prioritizeMobilePhones: true } });
+      var data = (json.result && json.result.data) || [];
+      var meta = (json.result && json.result.meta && json.result.meta.results) || {};
+      bdAddMatches_(Number(meta.matchCount) || 0);
+      data.forEach(function (item, k) {
+        var id = (item.input && item.input.requestId) || (chunk[k] && chunk[k].requestId);
+        if (!id || !byId[id]) return;
+        var pick = skipTracePick_(item);
+        if (pick.emails.length || pick.phones.length) results[id] = pick;
+      });
+    }
+    return reqs.length;
+  };
+
+  var sent = pass(cands, false);
+  // second chance: an LLC's mailing address is often its principal's home or office
+  var retry = cands.filter(function (c) { return !results[c.id] && parseAddress_(c.mailingAddress) && parseAddress_(purchaseAddress_(c)); });
+  if (retry.length) pass(retry, true);
+
+  var today = fmtDate_(new Date(), 'MMM d, yyyy');
+  cands.forEach(function (inv) {
+    var r = results[inv.id], f = { skipTraced: new Date(), updated: new Date() };
+    if (!skipTraceRequest_(inv, false)) {
+      out.skipped++;
+      f.skipTraceResult = 'No usable address to skip trace';
+    } else if (!r) {
+      out.noMatch++;
+      f.skipTraceResult = 'No match';
+    } else {
+      out.found++;
+      if (r.emails.length) { f.email = r.emails[0]; out.emails++; }
+      if (r.phones.length && !str_(inv.phone)) { f.phone = r.phones[0].n; out.phones++; }
+      if (r.contact && str_(inv.company) && !str_(inv.firstName) && !str_(inv.lastName)) {
+        f.firstName = titleCase_(r.contact.first || ''); f.lastName = titleCase_(r.contact.last || '');
+      }
+      f.skipTraceResult = (r.emails.length ? 'Email' : 'No email') + (r.phones.length ? ' + phone' : '') + ' found';
+      var extra = [];
+      if (r.contact && r.contact.full) extra.push('contact ' + titleCase_(r.contact.full));
+      if (r.emails.length > 1) extra.push('other emails ' + r.emails.slice(1, 4).join(', '));
+      if (r.phones.length) extra.push('phones ' + r.phones.slice(0, 4).map(function (p) { return p.n + (p.type ? ' (' + p.type.toLowerCase() + ')' : '') + (p.dnc ? ' DNC' : ''); }).join(', '));
+      if (r.litigator) extra.push('⚠ known TCPA litigator: do not call or text');
+      var notes = str_(inv.notes).replace(/\s*Needs an email address before approval \(skip trace this owner\)\.?/, '');
+      if (f.email) notes = notes.replace(/\s*Skip traced[^.]*\./g, '');
+      f.notes = (notes + ' Skip traced ' + today + ': ' + extra.join('; ') + '.').trim().slice(0, 1500);
+    }
+    if (rowOf[inv.id]) updateObject_(SHEET.INVESTORS, rowOf[inv.id], f);
+    out.traced++;
+  });
+  out.note = out.traced + ' skip traced: ' + out.emails + ' emails, ' + out.phones + ' phones found' + (out.noMatch ? ', ' + out.noMatch + ' no match' : '') +
+    (sent < cands.length ? ', ' + (cands.length - sent) + ' without an address' : '');
+  setSetting_('LAST_SKIPTRACE', JSON.stringify({ at: new Date().toISOString(), note: out.note }));
+  return out;
+}
+
+function skipTraceStatus_() {
+  var s = getSettings_();
+  var last = {};
+  try { last = JSON.parse(s.LAST_SKIPTRACE || '{}'); } catch (e) { last = {}; }
+  var key = bdKey_();
+  return {
+    hasKey: !!key, keyHint: key ? '…' + key.slice(-4) : '', on: bool_(s.SKIPTRACE_ON),
+    matchesThisMonth: bdMatchesUsed_(), cap: parseInt(s.SKIPTRACE_MONTHLY_CAP, 10) || 0,
+    waiting: skipTraceCandidates_().length, last: last
+  };
+}
+
+// ---------- client API ----------
+
+/** Saves and tests the BatchData API key (stored privately, never in the sheet). */
+function saveSkipTraceKey(key) {
+  requireRole_('Owner');
+  key = str_(key).replace(/^Bearer\s+/i, '');
+  var props = PropertiesService.getScriptProperties();
+  if (!key) { props.deleteProperty('BD_API_KEY'); return getIntakeStatus(); }
+  if (!/^[A-Za-z0-9_\-]{20,}$/.test(key)) throw new Error('That doesn\'t look like a BatchData API token (a long string of letters and numbers).');
+  // An empty request is free: a bad key answers 401, a good key answers 400 (no properties).
+  try { bdFetch_({ requests: [] }, key); } catch (e) {
+    if (/rejected the API key|can't use skip trace|out of funds/.test(e.message)) throw e;
+  }
+  props.setProperty('BD_API_KEY', key);
+  return getIntakeStatus();
+}
+
+/** "Skip trace now": all buyers missing an email, or just the given ids. */
+function skipTraceNow(ids) {
+  requireRole_('Rep');
+  return withLock_(function () {
+    var r = skipTraceRun_(ids && ids.length ? ids : null);
+    if (r.status === 'off' && !bdKey_()) throw new Error(r.note);
+    if (r.status === 'capped') throw new Error(r.note);
+    return { result: r, status: getIntakeStatus() };
+  });
 }
 
 

@@ -68,7 +68,10 @@ var INVESTOR_MAP = {
   defaults: 'Contract Defaults',
   reliability: 'Reliability Rating',
   heat: 'Heat Score',
-  tierChanged: 'Tier Changed On'
+  tierChanged: 'Tier Changed On',
+  lastPurchaseAddress: 'Last Purchase Address',
+  skipTraced: 'Skip Traced On',
+  skipTraceResult: 'Skip Trace Result'
 };
 
 var DEAL_MAP = {
@@ -379,6 +382,10 @@ var DEFAULT_SETTINGS = [
   ['INTAKE_COUNTY_MIN_PRICE', '20000', 'Ignore county sales below this price.'],
   ['INTAKE_ACTIVE_MIN_BUYS', '3', 'Serious investors only: a public-records buyer is added once they have bought at least this many properties…'],
   ['INTAKE_ACTIVE_DAYS', '90', '…within this many days.'],
+  ['SKIPTRACE_ON', 'TRUE', 'Automatically skip trace new buyers who have no email (needs a BatchData API key).'],
+  ['SKIPTRACE_MAX_PER_RUN', '100', 'Most buyers skip traced in one run.'],
+  ['SKIPTRACE_MONTHLY_CAP', '500', 'Stop skip tracing after this many paid matches in a month (0 = no limit).'],
+  ['SKIPTRACE_ACTIVE_TOO', 'TRUE', 'Also skip trace approved (Active) buyers that are missing an email, not just new buyers.'],
   ['INTAKE_WATCH_ON', 'TRUE', 'Find investor buyers in free public records for Hampton Roads, Richmond and Elizabeth City / Camden.'],
   ['INTAKE_WATCH_AREAS', '', 'Which public-records areas to watch (blank = all).'],
   ['INTAKE_WATCH_DAYS', '90', 'Live sales feeds (York County): only sales recorded within this many days.'],

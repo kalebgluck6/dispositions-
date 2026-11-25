@@ -74,6 +74,7 @@ step('serious investors only: York buyer with 3 lots in 90 days is added; one-of
   assert(/Developer/.test(sm.categories)); assert.strictEqual(sm.propertyTypes, 'Land');
   assert(/^New-construction \/ land buyer\. Active investor — 3 purchases/.test(sm.criteria), sm.criteria);
   assert.strictEqual(sm.mailingAddress, '11710 Plaza America Dr, Reston, VA 00000');
+  assert(/^10[246] Masters Ln, Yorktown, VA$/.test(sm.lastPurchaseAddress), 'property address kept for skip tracing: ' + sm.lastPurchaseAddress);
   ['Gristmill', 'Rivera', 'Tidewater'].forEach(n => assert(!by(new RegExp(n)), n + ' not active enough yet'));
   const owners = ledger().map(x => x.owner);
   assert(owners.includes('Gristmill Plaza LLC') && owners.includes('Rivera Jose'), 'investor purchases logged for later');
@@ -119,6 +120,7 @@ step('owner-change watch: baseline first, then buyers with enough purchases for 
   assert(by(/Rva Rentals/), 'Richmond LLC with 3 purchases'); assert.strictEqual(by(/Rva Rentals/).purchaseCount, 3);
   const al = by(/Albemarle Land/); assert(al && al.markets === 'Elizabeth City' && /Developer/.test(al.categories));
   assert(/103 Pearl St/.test(al.purchases), 'NC zero-padded address cleaned: ' + al.purchases);
+  assert(/Pearl St, Elizabeth City, NC$/.test(al.lastPurchaseAddress), al.lastPurchaseAddress);
   ['Buildright', 'Broad St Retail', 'First National', 'Grace Church', 'Suffolk Owner 13'].forEach(n => assert(!by(new RegExp(n, 'i')), n));
   assert(ledger().some(x => /Buildright/.test(x.owner)) && ledger().some(x => /Broad St Retail/.test(x.owner)), 'one-offs logged for later');
   assert(!ledger().some(x => /Bank|Church/.test(x.owner)));

@@ -199,6 +199,7 @@ function addLead_(ctx, sourceLabel, lead, ref, details) {
     var f = {};
     if (lead.purchaseCount && Number(lead.purchaseCount) > (Number(existing.purchaseCount) || 0)) {
       f.purchases = lead.purchases; f.purchaseCount = lead.purchaseCount; f.lastPurchase = lead.lastPurchase;
+      if (lead.lastPurchaseAddress) f.lastPurchaseAddress = lead.lastPurchaseAddress;
     }
     if (email && !str_(existing.email)) f.email = email;
     if (str_(lead.phone) && !str_(existing.phone)) f.phone = str_(lead.phone);
@@ -233,6 +234,7 @@ function addLead_(ctx, sourceLabel, lead, ref, details) {
   rec.purchases = str_(lead.purchases);
   rec.purchaseCount = lead.purchaseCount || '';
   rec.lastPurchase = lead.lastPurchase || '';
+  rec.lastPurchaseAddress = str_(lead.lastPurchaseAddress);
   ctx.adds.push(rec);
   if (email) ctx.byEmail[email] = rec;
   if (key) ctx.byKey[key] = rec;
@@ -536,6 +538,7 @@ function runIntakeSources_(sources, sendSummary) {
     } catch (e) { results.active = { status: 'error', note: String(e.message || e) }; }
   }
   flushIntake_(ctx);
+  try { results.skiptrace = skipTraceRun_(); } catch (e) { results.skiptrace = { status: 'error', note: String(e.message || e) }; }
   var added = ctx.adds.length;
   var stamp = new Date().toISOString();
   setSetting_('LAST_INTAKE_RUN', stamp);
@@ -597,6 +600,7 @@ function getIntakeStatus() {
     pending: pending,
     log: log,
     sources: Object.keys(INTAKE_SOURCES).map(function (k) { return { key: k, label: INTAKE_SOURCES[k].label, on: bool_(s[INTAKE_SOURCES[k].setting]) }; }),
+    skipTrace: skipTraceStatus_(),
     dm: { hasKey: !!dmKey_(), keyHint: dmKey_() ? '…' + dmKey_().slice(-4) : '', creditsThisMonth: dmCreditsUsed_(), cap: parseInt(s.INTAKE_DM_MONTHLY_CAP, 10) || 0 },
     areas: DM_AREAS,
     watch: watchStatus_(),

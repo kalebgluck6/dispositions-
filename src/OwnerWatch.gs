@@ -311,6 +311,7 @@ function runOwnerWatch() {
     var note = watchLeads_(ctx, 270000);
     ledgerPromote_(ctx);
     flushIntake_(ctx);
+    if (ctx.adds.length) { try { skipTraceRun_(); } catch (e) { /* retried on the next intake run */ } }
     return { note: note, added: ctx.adds.length };
   });
 }
