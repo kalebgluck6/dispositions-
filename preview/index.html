@@ -4432,12 +4432,12 @@ function runIntakeSources_(sources, sendSummary) {
       var archived = ledgerCleanupLegacy_();
       ctx.cur = { added: 0, updated: 0, duplicate: 0, skipped: 0 };
       var lp = ledgerPromote_(ctx);
-      results.active = { status: 'ok', note: lp.buyers + ' active investors (' + lp.minBuys + '+ purchases in ' + lp.windowDays + ' days)' + (archived ? ' · ' + archived + ' one-off buyers archived' : ''), added: ctx.cur.added, updated: ctx.cur.updated };
+      results.active = { status: 'ok', note: lp.buyers + ' active investors (' + lp.minBuys + '+ purchases in ' + lp.windowDays + ' days)' + (ctx.reopened ? ' · ' + ctx.reopened + ' archived buyers reopened' : '') + (archived ? ' · ' + archived + ' one-off buyers archived' : ''), added: ctx.cur.added + (ctx.reopened || 0), updated: ctx.cur.updated - (ctx.reopened || 0), logged: ctx.ledgerLogged || 0 };
     } catch (e) { results.active = { status: 'error', note: String(e.message || e) }; }
   }
   flushIntake_(ctx);
   try { results.skiptrace = skipTraceRun_(); } catch (e) { results.skiptrace = { status: 'error', note: String(e.message || e) }; }
-  var added = ctx.adds.length;
+  var added = ctx.adds.length + (ctx.reopened || 0);
   var stamp = new Date().toISOString();
   setSetting_('LAST_INTAKE_RUN', stamp);
   setSetting_('LAST_INTAKE_RESULT', JSON.stringify(results));
@@ -4848,6 +4848,20 @@ function ledgerPromote_(ctx) {
     if (!lead) return;
     lead.criteria = 'Active investor — ' + g.length + ' purchase' + (g.length === 1 ? '' : 's') + ' logged in public records. ' + lead.criteria.replace(/^New-construction \/ land buyer\. /, '');
     if (/land/i.test(lead.propertyTypes)) lead.criteria = 'New-construction / land buyer. ' + lead.criteria;
+    lead._total = g.length;
+    lead._addrs = fresh.map(function (r) { return r.addr; });
+    // a buyer archived earlier for having too few purchases comes back for review once they qualify
+    var prior = ctx.byKey[ownerKey_(lead)];
+    if (prior && str_(prior.status) === 'Inactive' && /not an active investor yet\]/.test(str_(prior.notes)) && prior._row) {
+      var note = str_(prior.notes).replace(/\s*\[Archived [^\]]*not an active investor yet\]/g, '').trim();
+      var up = ctx.updates[prior.id] || (ctx.updates[prior.id] = { row: prior._row, fields: {} });
+      up.fields.status = PENDING_REVIEW; up.fields.notes = note; up.fields.updated = new Date();
+      ['categories', 'propertyTypes', 'markets', 'criteria', 'minPrice', 'maxPrice', 'mailingAddress'].forEach(function (k) {
+        if (str_(lead[k]) !== '') { up.fields[k] = lead[k]; prior[k] = lead[k]; }
+      });
+      prior.status = PENDING_REVIEW; prior.notes = note;
+      ctx.reopened = (ctx.reopened || 0) + 1;
+    }
     addRecordLeads_(ctx, fresh[0].source, [lead]);
     fresh.forEach(function (r) { r.promoted = true; });
     promoted += fresh.length; buyers++;
@@ -5484,7 +5498,7 @@ function yorkSales_(src, ctx, s) {
     var nParcels = bulk[normKey_(a.ownerName) + '|' + a.transferDate + '|' + a.consideration] || 1;
     var d = a.transferDate ? new Date(a.transferDate) : null;
     var ref = 'YRK:' + (a.PID || a.GPIN) + ':' + (d ? fmtDate_(d) : '');
-    if (ctx.refs[ref]) return;
+    // each purchase is logged once by the Purchase Ledger (ledgerAdd_ skips refs it already has)
     sales.push({
       name: a.ownerName, email: '', phone: '', mailing: mailing_(a.ownerAddress1, a.ownerCity, a.ownerState, a.ownerZip),
       addr: a.ADDRESS, mailStreet: a.ownerAddress1, city: src.market, state: 'VA', date: d, price: Number(a.consideration) ? Math.round(Number(a.consideration) / nParcels) : '',
@@ -5517,7 +5531,7 @@ function ownerWatchStep_(src, ctx, s, deadline) {
       next[row.id] = key;
       if (!old || prev === undefined || !key || prev === key) return;
       var ref = 'OW:' + src.key + ':' + row.id + ':' + st.scan.version;
-      if (ctx.refs[ref]) return;
+      // each purchase is logged once by the Purchase Ledger (ledgerAdd_ skips refs it already has)
       sales.push({
         name: row.owner, email: '', phone: '', mailing: row.mail, mailStreet: row.mailStreet, addr: row.addr, city: row.city, state: src.provider === 'nc' ? 'NC' : 'VA',
         date: null, price: '', type: propKind_(row.use, row.zoning, row.imp), financing: '', saleRef: ref,
@@ -5736,10 +5750,25 @@ function addRecordLeads_(ctx, sourceLabel, leads) {
   leads.forEach(function (lead) {
     var refs = lead._refs; delete lead._refs;
     var existing = (lead.email && ctx.byEmail[lc_(lead.email)]) || ctx.byKey[ownerKey_(lead)];
+    var total = lead._total; delete lead._total;
     if (existing) {
-      lead.purchaseCount = (Number(existing.purchaseCount) || 0) + lead.purchaseCount;
-      if (str_(existing.purchases)) lead.purchases = (lead.purchases + '; ' + existing.purchases).slice(0, 900);
+      if (total) {
+        // ledger promotions know the buyer's full purchase count; older history may repeat the same sales
+        var had = normKey_(existing.purchases);
+        var newOnes = (lead._addrs || []).filter(function (a) { return a && had.indexOf(normKey_(a)) === -1; }).length;
+        lead.purchaseCount = Math.max(total, (Number(existing.purchaseCount) || 0) + newOnes);
+        var seenAddr = {};
+        lead.purchases = (lead.purchases + '; ' + str_(existing.purchases)).split(/;\s*/).filter(function (p) {
+          var k = normKey_(p.split(' — ')[0]);
+          if (!p || /^\+\d+ more$/.test(p) || seenAddr[k]) return false;
+          seenAddr[k] = true; return true;
+        }).join('; ').slice(0, 900);
+      } else {
+        lead.purchaseCount = (Number(existing.purchaseCount) || 0) + lead.purchaseCount;
+        if (str_(existing.purchases)) lead.purchases = (lead.purchases + '; ' + existing.purchases).slice(0, 900);
+      }
     }
+    delete lead._addrs;
     addLead_(ctx, sourceLabel, lead, refs.join(';'), lead.purchases);
     refs.forEach(function (r) { ctx.refs[r] = true; });
   });
@@ -6003,7 +6032,7 @@ function countyLeads_(ctx) {
     if (INSTITUTION_RE.test(buyer)) return;
     var ref = 'NFK:' + r.parcel_id + ':' + String(r.transfer_date || '').slice(0, 10);
     kept++;
-    if (ctx.refs[ref]) return;
+    // each purchase is logged once by the Purchase Ledger (ledgerAdd_ skips refs it already has)
     var addr = [r.property_street_number, r.property_street_direction, r.property_street_name, r.property_street_type].filter(Boolean).join(' ') + (r.unit_number ? ' #' + r.unit_number : '');
     sales.push({
       name: buyer, email: '', phone: '', mailing: '', addr: addr, city: r.property_city || 'Norfolk', state: 'VA',
@@ -7067,7 +7096,7 @@ function toast(msg, type) {
   el.className = 'toast ' + (type || '');
   el.innerHTML = msg;
   $('#toasts').appendChild(el);
-  setTimeout(() => { el.style.opacity = '0'; el.style.transition = '.3s'; setTimeout(() => el.remove(), 300); }, type === 'err' ? 7000 : 4000);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = '.3s'; setTimeout(() => el.remove(), 300); }, type === 'err' ? 7000 : String(msg).length > 140 ? 10000 : 4000);
 }
 const confirmSafe = msg => { try { const r = window.confirm(msg); return r === undefined ? true : r; } catch (e) { return true; } };
 const fail = e => { console.error(e); toast(esc(e && e.message || e), 'err'); };
@@ -8573,7 +8602,11 @@ const ACT = {
       const st = await api('runBuyerIntakeNow');
       S.intake = st; S.investors = await api('listInvestors');
       const errs = Object.keys(st.run.results).filter(k => st.run.results[k].status === 'error');
-      toast('<b>' + st.run.added + '</b> new buyer' + (st.run.added === 1 ? '' : 's') + ' added for review.' + (errs.length ? ' ' + errs.length + ' source(s) had errors — see below.' : ''), errs.length ? 'warn' : '');
+      const act = st.run.results.active || {}, lg = st.ledger || {};
+      const why = st.run.added ? '' : ' Each purchase is only counted once, so a buyer shows up when they reach ' + (lg.minBuys || 3) + ' purchases in ' + (lg.days || 90) + ' days.' +
+        (act.logged ? ' ' + act.logged + ' new purchases logged this time.' : '') + (lg.almost ? ' ' + lg.almost + ' investors are one purchase away.' : '') +
+        (st.pending ? ' ' + st.pending + ' buyers are already waiting for your review below.' : '');
+      toast('<b>' + st.run.added + '</b> new buyer' + (st.run.added === 1 ? '' : 's') + ' added for review.' + why + (errs.length ? ' ' + errs.length + ' source(s) had errors — see below.' : ''), errs.length || !st.run.added ? 'warn' : '');
       render();
     } catch (e) { fail(e); el.disabled = false; el.innerHTML = old; }
   },

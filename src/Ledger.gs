@@ -87,6 +87,20 @@ function ledgerPromote_(ctx) {
     if (!lead) return;
     lead.criteria = 'Active investor — ' + g.length + ' purchase' + (g.length === 1 ? '' : 's') + ' logged in public records. ' + lead.criteria.replace(/^New-construction \/ land buyer\. /, '');
     if (/land/i.test(lead.propertyTypes)) lead.criteria = 'New-construction / land buyer. ' + lead.criteria;
+    lead._total = g.length;
+    lead._addrs = fresh.map(function (r) { return r.addr; });
+    // a buyer archived earlier for having too few purchases comes back for review once they qualify
+    var prior = ctx.byKey[ownerKey_(lead)];
+    if (prior && str_(prior.status) === 'Inactive' && /not an active investor yet\]/.test(str_(prior.notes)) && prior._row) {
+      var note = str_(prior.notes).replace(/\s*\[Archived [^\]]*not an active investor yet\]/g, '').trim();
+      var up = ctx.updates[prior.id] || (ctx.updates[prior.id] = { row: prior._row, fields: {} });
+      up.fields.status = PENDING_REVIEW; up.fields.notes = note; up.fields.updated = new Date();
+      ['categories', 'propertyTypes', 'markets', 'criteria', 'minPrice', 'maxPrice', 'mailingAddress'].forEach(function (k) {
+        if (str_(lead[k]) !== '') { up.fields[k] = lead[k]; prior[k] = lead[k]; }
+      });
+      prior.status = PENDING_REVIEW; prior.notes = note;
+      ctx.reopened = (ctx.reopened || 0) + 1;
+    }
     addRecordLeads_(ctx, fresh[0].source, [lead]);
     fresh.forEach(function (r) { r.promoted = true; });
     promoted += fresh.length; buyers++;

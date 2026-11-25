@@ -534,12 +534,12 @@ function runIntakeSources_(sources, sendSummary) {
       var archived = ledgerCleanupLegacy_();
       ctx.cur = { added: 0, updated: 0, duplicate: 0, skipped: 0 };
       var lp = ledgerPromote_(ctx);
-      results.active = { status: 'ok', note: lp.buyers + ' active investors (' + lp.minBuys + '+ purchases in ' + lp.windowDays + ' days)' + (archived ? ' · ' + archived + ' one-off buyers archived' : ''), added: ctx.cur.added, updated: ctx.cur.updated };
+      results.active = { status: 'ok', note: lp.buyers + ' active investors (' + lp.minBuys + '+ purchases in ' + lp.windowDays + ' days)' + (ctx.reopened ? ' · ' + ctx.reopened + ' archived buyers reopened' : '') + (archived ? ' · ' + archived + ' one-off buyers archived' : ''), added: ctx.cur.added + (ctx.reopened || 0), updated: ctx.cur.updated - (ctx.reopened || 0), logged: ctx.ledgerLogged || 0 };
     } catch (e) { results.active = { status: 'error', note: String(e.message || e) }; }
   }
   flushIntake_(ctx);
   try { results.skiptrace = skipTraceRun_(); } catch (e) { results.skiptrace = { status: 'error', note: String(e.message || e) }; }
-  var added = ctx.adds.length;
+  var added = ctx.adds.length + (ctx.reopened || 0);
   var stamp = new Date().toISOString();
   setSetting_('LAST_INTAKE_RUN', stamp);
   setSetting_('LAST_INTAKE_RESULT', JSON.stringify(results));

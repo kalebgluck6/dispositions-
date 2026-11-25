@@ -64,15 +64,25 @@ const pending = () => g.listInvestors().filter(i => i.status === 'Pending Review
 const by = (re) => pending().find(i => re.test(i.company || (i.firstName + ' ' + i.lastName)));
 const ledger = () => g.readTable_('Purchase Ledger').rows;
 
+// Upgrading from the version before the ledger: every York sale was already seen by an earlier run,
+// and Stanley Martin was archived by the one-time cleanup with a single purchase.
+g.appendObjects_('Buyer Intake Log', york.map(y => ({ id: 'B-old' + y.PID, received: new Date(now - 2 * day), source: 'old run', name: y.ownerName, result: 'Added — pending review', ref: 'YRK:' + y.PID + ':' + g.fmtDate_(new Date(y.transferDate)) })));
+g.appendObjects_('Investors', [{ id: 'INV-00900', company: 'Stanley Martin Homes LLC', status: 'Inactive', source: 'Public records (Hampton Roads, Richmond, NC)', purchaseCount: 1, purchases: '102 Masters Ln, Yorktown — $200,000 · land (Nov 20, 2026)', notes: 'Bought 1 property. [Archived Nov 20, 2026: fewer than 3 purchases — not an active investor yet]' }]);
+g.PropertiesService.getScriptProperties().setProperty('LEDGER_MIGRATED', 'x');
+
 step('serious investors only: York buyer with 3 lots in 90 days is added; one-off buyers are only logged', () => {
   const r = g.runBuyerIntake();
   assert.strictEqual(r.results.watch.status, 'ok', JSON.stringify(r.results.watch));
+  assert(ledger().length >= 7, 'sales seen by earlier runs still count toward the 3-purchase rule: ' + ledger().length);
   assert(/3\+ purchases in 90 days/.test(r.results.active.note), r.results.active.note);
   const sm = by(/Stanley Martin/);
   assert(sm, 'builder with 3 purchases added'); assert.strictEqual(sm.purchaseCount, 3);
   assert(/\$200,000 · land/.test(sm.purchases), 'bulk $600,000 deed split across 3 lots: ' + sm.purchases);
   assert(/Developer/.test(sm.categories)); assert.strictEqual(sm.propertyTypes, 'Land');
   assert(/^New-construction \/ land buyer\. Active investor — 3 purchases/.test(sm.criteria), sm.criteria);
+  assert(!/Archived/.test(sm.notes), 'archived buyer reopened for review: ' + sm.notes);
+  assert.strictEqual(g.listInvestors().filter(i => /Stanley Martin/.test(i.company)).length, 1, 'reopened, not duplicated');
+  assert(/1 archived buyers reopened/.test(r.results.active.note) && r.results.active.added >= 1, JSON.stringify(r.results.active));
   assert.strictEqual(sm.mailingAddress, '11710 Plaza America Dr, Reston, VA 00000');
   assert(/^10[246] Masters Ln, Yorktown, VA$/.test(sm.lastPurchaseAddress), 'property address kept for skip tracing: ' + sm.lastPurchaseAddress);
   ['Gristmill', 'Rivera', 'Tidewater'].forEach(n => assert(!by(new RegExp(n)), n + ' not active enough yet'));

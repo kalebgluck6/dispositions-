@@ -207,7 +207,7 @@ function yorkSales_(src, ctx, s) {
     var nParcels = bulk[normKey_(a.ownerName) + '|' + a.transferDate + '|' + a.consideration] || 1;
     var d = a.transferDate ? new Date(a.transferDate) : null;
     var ref = 'YRK:' + (a.PID || a.GPIN) + ':' + (d ? fmtDate_(d) : '');
-    if (ctx.refs[ref]) return;
+    // each purchase is logged once by the Purchase Ledger (ledgerAdd_ skips refs it already has)
     sales.push({
       name: a.ownerName, email: '', phone: '', mailing: mailing_(a.ownerAddress1, a.ownerCity, a.ownerState, a.ownerZip),
       addr: a.ADDRESS, mailStreet: a.ownerAddress1, city: src.market, state: 'VA', date: d, price: Number(a.consideration) ? Math.round(Number(a.consideration) / nParcels) : '',
@@ -240,7 +240,7 @@ function ownerWatchStep_(src, ctx, s, deadline) {
       next[row.id] = key;
       if (!old || prev === undefined || !key || prev === key) return;
       var ref = 'OW:' + src.key + ':' + row.id + ':' + st.scan.version;
-      if (ctx.refs[ref]) return;
+      // each purchase is logged once by the Purchase Ledger (ledgerAdd_ skips refs it already has)
       sales.push({
         name: row.owner, email: '', phone: '', mailing: row.mail, mailStreet: row.mailStreet, addr: row.addr, city: row.city, state: src.provider === 'nc' ? 'NC' : 'VA',
         date: null, price: '', type: propKind_(row.use, row.zoning, row.imp), financing: '', saleRef: ref,

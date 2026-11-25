@@ -339,7 +339,7 @@ function toast(msg, type) {
   el.className = 'toast ' + (type || '');
   el.innerHTML = msg;
   $('#toasts').appendChild(el);
-  setTimeout(() => { el.style.opacity = '0'; el.style.transition = '.3s'; setTimeout(() => el.remove(), 300); }, type === 'err' ? 7000 : 4000);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = '.3s'; setTimeout(() => el.remove(), 300); }, type === 'err' ? 7000 : String(msg).length > 140 ? 10000 : 4000);
 }
 const confirmSafe = msg => { try { const r = window.confirm(msg); return r === undefined ? true : r; } catch (e) { return true; } };
 const fail = e => { console.error(e); toast(esc(e && e.message || e), 'err'); };
@@ -1845,7 +1845,11 @@ const ACT = {
       const st = await api('runBuyerIntakeNow');
       S.intake = st; S.investors = await api('listInvestors');
       const errs = Object.keys(st.run.results).filter(k => st.run.results[k].status === 'error');
-      toast('<b>' + st.run.added + '</b> new buyer' + (st.run.added === 1 ? '' : 's') + ' added for review.' + (errs.length ? ' ' + errs.length + ' source(s) had errors — see below.' : ''), errs.length ? 'warn' : '');
+      const act = st.run.results.active || {}, lg = st.ledger || {};
+      const why = st.run.added ? '' : ' Each purchase is only counted once, so a buyer shows up when they reach ' + (lg.minBuys || 3) + ' purchases in ' + (lg.days || 90) + ' days.' +
+        (act.logged ? ' ' + act.logged + ' new purchases logged this time.' : '') + (lg.almost ? ' ' + lg.almost + ' investors are one purchase away.' : '') +
+        (st.pending ? ' ' + st.pending + ' buyers are already waiting for your review below.' : '');
+      toast('<b>' + st.run.added + '</b> new buyer' + (st.run.added === 1 ? '' : 's') + ' added for review.' + why + (errs.length ? ' ' + errs.length + ' source(s) had errors — see below.' : ''), errs.length || !st.run.added ? 'warn' : '');
       render();
     } catch (e) { fail(e); el.disabled = false; el.innerHTML = old; }
   },

@@ -125,10 +125,25 @@ function addRecordLeads_(ctx, sourceLabel, leads) {
   leads.forEach(function (lead) {
     var refs = lead._refs; delete lead._refs;
     var existing = (lead.email && ctx.byEmail[lc_(lead.email)]) || ctx.byKey[ownerKey_(lead)];
+    var total = lead._total; delete lead._total;
     if (existing) {
-      lead.purchaseCount = (Number(existing.purchaseCount) || 0) + lead.purchaseCount;
-      if (str_(existing.purchases)) lead.purchases = (lead.purchases + '; ' + existing.purchases).slice(0, 900);
+      if (total) {
+        // ledger promotions know the buyer's full purchase count; older history may repeat the same sales
+        var had = normKey_(existing.purchases);
+        var newOnes = (lead._addrs || []).filter(function (a) { return a && had.indexOf(normKey_(a)) === -1; }).length;
+        lead.purchaseCount = Math.max(total, (Number(existing.purchaseCount) || 0) + newOnes);
+        var seenAddr = {};
+        lead.purchases = (lead.purchases + '; ' + str_(existing.purchases)).split(/;\s*/).filter(function (p) {
+          var k = normKey_(p.split(' — ')[0]);
+          if (!p || /^\+\d+ more$/.test(p) || seenAddr[k]) return false;
+          seenAddr[k] = true; return true;
+        }).join('; ').slice(0, 900);
+      } else {
+        lead.purchaseCount = (Number(existing.purchaseCount) || 0) + lead.purchaseCount;
+        if (str_(existing.purchases)) lead.purchases = (lead.purchases + '; ' + existing.purchases).slice(0, 900);
+      }
     }
+    delete lead._addrs;
     addLead_(ctx, sourceLabel, lead, refs.join(';'), lead.purchases);
     refs.forEach(function (r) { ctx.refs[r] = true; });
   });
@@ -392,7 +407,7 @@ function countyLeads_(ctx) {
     if (INSTITUTION_RE.test(buyer)) return;
     var ref = 'NFK:' + r.parcel_id + ':' + String(r.transfer_date || '').slice(0, 10);
     kept++;
-    if (ctx.refs[ref]) return;
+    // each purchase is logged once by the Purchase Ledger (ledgerAdd_ skips refs it already has)
     var addr = [r.property_street_number, r.property_street_direction, r.property_street_name, r.property_street_type].filter(Boolean).join(' ') + (r.unit_number ? ' #' + r.unit_number : '');
     sales.push({
       name: buyer, email: '', phone: '', mailing: '', addr: addr, city: r.property_city || 'Norfolk', state: 'VA',
