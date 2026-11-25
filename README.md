@@ -330,7 +330,7 @@ How it runs and what it costs:
 ### Free public records: Hampton Roads, Richmond & NE North Carolina
 Turned on by default in **New Buyers → Public Records**.
 
-**Serious investors only.** Every investor purchase found is written to the **Purchase Ledger** sheet. A buyer is added to your review queue only after they make **3 or more purchases within 90 days**. You can change both numbers on the Public Records card.
+**Serious investors only.** Every investor purchase found is written to the **Purchase Ledger** sheet. A buyer is added to your review queue only after they make **2 or more purchases within 90 days**. You can change both numbers on the Public Records card.
 * Owner-change areas refresh only every few months, so the bar scales with the refresh period. For example, a 6-month refresh needs 7 or more new parcels.
 * Once a buyer qualifies, their later purchases keep being added to their history.
 * **Logged:** companies, LLCs and investment trusts; individuals only for land or when they don't live at the property.

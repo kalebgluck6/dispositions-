@@ -386,7 +386,7 @@ var DEFAULT_SETTINGS = [
   ['INTAKE_COUNTY_ON', 'TRUE', 'Find buyers in free City of Norfolk recorded-sales data.'],
   ['INTAKE_COUNTY_DAYS', '90', 'Only county sales recorded within this many days.'],
   ['INTAKE_COUNTY_MIN_PRICE', '20000', 'Ignore county sales below this price.'],
-  ['INTAKE_ACTIVE_MIN_BUYS', '3', 'Serious investors only: a public-records buyer is added once they have bought at least this many properties…'],
+  ['INTAKE_ACTIVE_MIN_BUYS', '2', 'Serious investors only: a public-records buyer is added once they have bought at least this many properties…'],
   ['INTAKE_ACTIVE_DAYS', '90', '…within this many days.'],
   ['SKIPTRACE_ON', 'TRUE', 'Automatically skip trace new buyers who have no email (needs a BatchData API key).'],
   ['SKIPTRACE_MAX_PER_RUN', '100', 'Most buyers skip traced in one run.'],
@@ -2861,6 +2861,7 @@ function setup() {
   if (ss) props.setProperty('SPREADSHEET_ID', ss.getId());
   _ss = null;
   ensureSettings_();
+  ledgerMinBuysUpdate_();
   [SHEET.INVESTORS, SHEET.DEALS, SHEET.JOBS, SHEET.LOG, SHEET.RESPONSES, SHEET.INTAKE, SHEET.OFFERS, SHEET.FOLLOWUPS, SHEET.LEDGER].forEach(function (n) { getSheet_(n); });
   var book = ss_();
   var blank = book.getSheetByName('Sheet1');
@@ -4319,6 +4320,7 @@ function runIntakeSources_(sources, sendSummary) {
   });
   if (sources.indexOf('county') > -1 || sources.indexOf('watch') > -1) {
     try {
+      ledgerMinBuysUpdate_();
       var archived = ledgerCleanupLegacy_();
       ctx.cur = { added: 0, updated: 0, duplicate: 0, skipped: 0 };
       var lp = ledgerPromote_(ctx);
@@ -4503,7 +4505,7 @@ function previewBuyerSource(kind, urlOrId, tabName) {
  *
  * Every investor purchase found in public records (Norfolk, York, owner-change watch areas) is logged in
  * the "Purchase Ledger" sheet first. A buyer only graduates to New Buyers once they have bought at least
- * INTAKE_ACTIVE_MIN_BUYS properties within INTAKE_ACTIVE_DAYS (default: 3 in 90 days — more than 1–2
+ * INTAKE_ACTIVE_MIN_BUYS properties within INTAKE_ACTIVE_DAYS (default: 2 in 90 days — more than 1–2
  * properties every couple of months). Their later purchases keep extending their history.
  *
  * Owner-change watch areas only know that ownership changed between two data refreshes (often months
@@ -4620,6 +4622,14 @@ function ledgerPromote_(ctx) {
  * One-time cleanup after switching to "serious investors only": buyers that came from public records
  * under the old rules, are still Pending Review, and don't meet the bar are set to Inactive (kept, never deleted).
  */
+/** One-time: the default became 2 purchases in 90 days; spreadsheets still on the old default of 3 move to 2. */
+function ledgerMinBuysUpdate_() {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('ACTIVE_MIN_2')) return;
+  if (String(getSettings_().INTAKE_ACTIVE_MIN_BUYS) === '3') setSetting_('INTAKE_ACTIVE_MIN_BUYS', '2');
+  props.setProperty('ACTIVE_MIN_2', new Date().toISOString());
+}
+
 function ledgerCleanupLegacy_() {
   var props = PropertiesService.getScriptProperties();
   if (props.getProperty('LEDGER_MIGRATED')) return 0;
@@ -5342,6 +5352,7 @@ function runOwnerWatch() {
     var ctx = intakeCtx_();
     ctx.cur = { added: 0, updated: 0, duplicate: 0, skipped: 0 };
     var note = watchLeads_(ctx, 270000);
+    ledgerMinBuysUpdate_();
     ledgerPromote_(ctx);
     flushIntake_(ctx);
     if (ctx.adds.length) { try { skipTraceRun_(); } catch (e) { /* retried on the next intake run */ } }

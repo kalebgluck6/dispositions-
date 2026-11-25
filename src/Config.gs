@@ -380,7 +380,7 @@ var DEFAULT_SETTINGS = [
   ['INTAKE_COUNTY_ON', 'TRUE', 'Find buyers in free City of Norfolk recorded-sales data.'],
   ['INTAKE_COUNTY_DAYS', '90', 'Only county sales recorded within this many days.'],
   ['INTAKE_COUNTY_MIN_PRICE', '20000', 'Ignore county sales below this price.'],
-  ['INTAKE_ACTIVE_MIN_BUYS', '3', 'Serious investors only: a public-records buyer is added once they have bought at least this many properties…'],
+  ['INTAKE_ACTIVE_MIN_BUYS', '2', 'Serious investors only: a public-records buyer is added once they have bought at least this many properties…'],
   ['INTAKE_ACTIVE_DAYS', '90', '…within this many days.'],
   ['SKIPTRACE_ON', 'TRUE', 'Automatically skip trace new buyers who have no email (needs a BatchData API key).'],
   ['SKIPTRACE_MAX_PER_RUN', '100', 'Most buyers skip traced in one run.'],

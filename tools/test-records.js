@@ -14,6 +14,15 @@ const step = (name, fn) => {
 };
 console.log('\nSameDayInvestments — public records tests\n');
 g.setup();
+// default is now 2 purchases in 90 days; a spreadsheet still on the old default of 3 moves to 2 once
+assert.strictEqual(g.getSettings().values.INTAKE_ACTIVE_MIN_BUYS, '2');
+g.PropertiesService.getScriptProperties().deleteProperty('ACTIVE_MIN_2');
+g.saveSettings({ INTAKE_ACTIVE_MIN_BUYS: '3' });
+g.ledgerMinBuysUpdate_();
+assert.strictEqual(g.getSettings().values.INTAKE_ACTIVE_MIN_BUYS, '2', 'old default of 3 moved to 2');
+g.saveSettings({ INTAKE_ACTIVE_MIN_BUYS: '3' });   // the scenarios below were written for 3; a value you choose is kept
+g.ledgerMinBuysUpdate_();
+assert.strictEqual(g.getSettings().values.INTAKE_ACTIVE_MIN_BUYS, '3', 'only changed once');
 g.saveSettings({ INTAKE_FORM_ON: 'FALSE', INTAKE_GMAIL_ON: 'FALSE', INTAKE_COUNTY_ON: 'FALSE', INTAKE_DM_ON: 'FALSE', INTAKE_WATCH_AREAS: 'york, richmond, hr800, nc37139' });
 
 const day = 86400000, now = Date.now();

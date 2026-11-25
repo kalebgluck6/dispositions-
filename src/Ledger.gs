@@ -3,7 +3,7 @@
  *
  * Every investor purchase found in public records (Norfolk, York, owner-change watch areas) is logged in
  * the "Purchase Ledger" sheet first. A buyer only graduates to New Buyers once they have bought at least
- * INTAKE_ACTIVE_MIN_BUYS properties within INTAKE_ACTIVE_DAYS (default: 3 in 90 days — more than 1–2
+ * INTAKE_ACTIVE_MIN_BUYS properties within INTAKE_ACTIVE_DAYS (default: 2 in 90 days — more than 1–2
  * properties every couple of months). Their later purchases keep extending their history.
  *
  * Owner-change watch areas only know that ownership changed between two data refreshes (often months
@@ -120,6 +120,14 @@ function ledgerPromote_(ctx) {
  * One-time cleanup after switching to "serious investors only": buyers that came from public records
  * under the old rules, are still Pending Review, and don't meet the bar are set to Inactive (kept, never deleted).
  */
+/** One-time: the default became 2 purchases in 90 days; spreadsheets still on the old default of 3 move to 2. */
+function ledgerMinBuysUpdate_() {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('ACTIVE_MIN_2')) return;
+  if (String(getSettings_().INTAKE_ACTIVE_MIN_BUYS) === '3') setSetting_('INTAKE_ACTIVE_MIN_BUYS', '2');
+  props.setProperty('ACTIVE_MIN_2', new Date().toISOString());
+}
+
 function ledgerCleanupLegacy_() {
   var props = PropertiesService.getScriptProperties();
   if (props.getProperty('LEDGER_MIGRATED')) return 0;

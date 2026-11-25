@@ -309,6 +309,7 @@ function runOwnerWatch() {
     var ctx = intakeCtx_();
     ctx.cur = { added: 0, updated: 0, duplicate: 0, skipped: 0 };
     var note = watchLeads_(ctx, 270000);
+    ledgerMinBuysUpdate_();
     ledgerPromote_(ctx);
     flushIntake_(ctx);
     if (ctx.adds.length) { try { skipTraceRun_(); } catch (e) { /* retried on the next intake run */ } }

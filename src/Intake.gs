@@ -531,6 +531,7 @@ function runIntakeSources_(sources, sendSummary) {
   });
   if (sources.indexOf('county') > -1 || sources.indexOf('watch') > -1) {
     try {
+      ledgerMinBuysUpdate_();
       var archived = ledgerCleanupLegacy_();
       ctx.cur = { added: 0, updated: 0, duplicate: 0, skipped: 0 };
       var lp = ledgerPromote_(ctx);
