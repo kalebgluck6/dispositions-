@@ -58,6 +58,26 @@ step('2-acre Suffolk parcel matches land buyers in Suffolk; Tier 1 first; irrele
   assert.strictEqual(by['dee@open.com'].fit, 'weak');
 });
 
+step('audience options can be combined: smart + tier + hand-pick, each investor once', () => {
+  const emails = pv => pv.recipients.map(r => r.email).sort().join(',');
+  const smart = g.previewAudience(deal.id, { mode: 'smart', modes: ['smart'] });
+  assert.strictEqual(smart.count, 3);
+  // smart (Alan, Bea, Gus) + Tier 1 (Alan, Carl, Ed) + hand-picked Dee
+  const pv = g.previewAudience(deal.id, { mode: 'combo', modes: ['smart', 'segments', 'selected'], tiers: ['Tier 1'], investorIds: [people.D.id], waves: true });
+  assert.strictEqual(emails(pv), 'alan@tidewaterbuilders.com,bea@lotsrus.com,carl@flips.com,dee@open.com,ed@rvaland.com,gus@gushomes.com');
+  const w = {}; pv.recipients.forEach(r => w[r.email] = r.wave);
+  assert.strictEqual(w['alan@tidewaterbuilders.com'], 1, 'in both smart and Tier 1: best wave kept, sent once');
+  assert.strictEqual(w['dee@open.com'], 1, 'hand-picked buyers go first');
+  assert.strictEqual(w['carl@flips.com'], 3, 'added only by the tier choice: last wave while waves are on');
+  assert.strictEqual(pv.excluded.notMatched + pv.excluded.notInSegment, 1, 'only Fay is left out: ' + JSON.stringify(pv.excluded));
+  const flat = g.previewAudience(deal.id, { mode: 'combo', modes: ['smart', 'segments'], tiers: ['Tier 1'], waves: false });
+  assert(flat.recipients.every(r => r.wave === 1), 'waves off: everyone at once');
+  assert.strictEqual(g.previewAudience(deal.id, { mode: 'combo', modes: ['all', 'selected'], investorIds: [people.D.id] }).count, 7);
+  const prep = g.prepareDistribution(deal.id, { mode: 'combo', modes: ['segments', 'selected'], tiers: ['Tier 2'], investorIds: [people.D.id] });
+  assert.strictEqual(prep.recipientCount, 4, JSON.stringify(prep.recipientCount));
+  assert(/Tiers: Tier 2 \+ Hand-picked \(1\)/.test(prep.audienceLabel || prep.audience || JSON.stringify(prep)), JSON.stringify(prep).slice(0, 300));
+});
+
 let job;
 step('smart distribution sends Wave 1 (top tier) now and schedules Wave 2', () => {
   M.sent = []; M.triggers = [];

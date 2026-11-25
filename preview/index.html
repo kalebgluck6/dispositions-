@@ -2479,7 +2479,7 @@ function matchesCriteria_(inv, deal) {
   return true;
 }
 
-function resolveAudience_(deal, audience, investors, logRows) {
+function resolveOne_(deal, audience, investors, logRows) {
   audience = audience || { mode: 'all' };
   var mode = audience.mode || 'all';
   var tiers = list_(audience.tiers), cats = list_(audience.categories), mkts = list_(audience.markets);
@@ -2519,40 +2519,104 @@ function resolveAudience_(deal, audience, investors, logRows) {
   }
   var seen = {};
   var included = [];
+  var reasons = {};
   investors.forEach(function (inv) {
     if (mode === 'selected' && picked.indexOf(inv.id) === -1) return; // not part of the hand-picked list at all
-    if ((str_(inv.status) || 'Active') !== 'Active') { ex.inactive++; return; }
-    if (bool_(inv.optOut)) { ex.optedOut++; return; }
+    if ((str_(inv.status) || 'Active') !== 'Active') { ex.inactive++; reasons[inv.id] = 'inactive'; return; }
+    if (bool_(inv.optOut)) { ex.optedOut++; reasons[inv.id] = 'optedOut'; return; }
     var email = lc_(inv.email);
-    if (!isEmail_(email)) { ex.invalidEmail++; return; }
-    if (seen[email]) { ex.duplicate++; return; }
+    if (!isEmail_(email)) { ex.invalidEmail++; reasons[inv.id] = 'invalidEmail'; return; }
+    if (seen[email]) { ex.duplicate++; reasons[inv.id] = 'duplicate'; return; }
     if (mode === 'segments') {
-      if (tiers.length && !overlap_([inv.tier], tiers)) { ex.notInSegment++; return; }
-      if (cats.length && !overlap_(list_(inv.categories), cats)) { ex.notInSegment++; return; }
-      if (mkts.length && !overlap_(list_(inv.markets), mkts)) { ex.notInSegment++; return; }
+      if (tiers.length && !overlap_([inv.tier], tiers)) { ex.notInSegment++; reasons[inv.id] = 'notInSegment'; return; }
+      if (cats.length && !overlap_(list_(inv.categories), cats)) { ex.notInSegment++; reasons[inv.id] = 'notInSegment'; return; }
+      if (mkts.length && !overlap_(list_(inv.markets), mkts)) { ex.notInSegment++; reasons[inv.id] = 'notInSegment'; return; }
     }
-    if (audience.matchCriteria && !matchesCriteria_(inv, deal)) { ex.criteria++; return; }
+    if (audience.matchCriteria && !matchesCriteria_(inv, deal)) { ex.criteria++; reasons[inv.id] = 'criteria'; return; }
     var wave = 1, score = '';
     if (smart) {
       var m = smart[inv.id];
       score = m.score;
       if (!m.matched && !(audience._priceDrop && priorRecipients[inv.id])) {
-        if (!audience.includeOthers) { ex.notMatched++; return; }
+        if (!audience.includeOthers) { ex.notMatched++; reasons[inv.id] = 'notMatched'; return; }
         wave = 3;
       } else wave = audience.waves === false || m.tierRank === topRank ? 1 : 2;
     }
-    if (already[inv.id]) { ex.alreadySent++; return; }
+    if (already[inv.id]) { ex.alreadySent++; reasons[inv.id] = 'alreadySent'; return; }
     seen[email] = true;
     inv._wave = wave; inv._score = score;
     included.push(inv);
   });
   // highest priority first: wave, then match score, then tier
   included.sort(function (a, b) { return (a._wave - b._wave) || ((Number(b._score) || 0) - (Number(a._score) || 0)) || (tierRank_(a.tier) - tierRank_(b.tier)); });
-  return { included: included, excluded: ex };
+  return { included: included, excluded: ex, reasons: reasons };
+}
+
+var AUDIENCE_MODES = ['smart', 'all', 'segments', 'selected'];
+
+/** Audience options picked together (any of smart / all / segments / selected). */
+function audienceModes_(audience) {
+  var m = (audience && audience.modes || []).filter(function (x, i, arr) { return AUDIENCE_MODES.indexOf(x) > -1 && arr.indexOf(x) === i; });
+  return m;
+}
+
+/**
+ * Resolves who receives a deal. Several audience options can be combined: everyone covered by any
+ * of them receives it, once. Smart-match buyers keep their priority waves; buyers added only by
+ * the other options go out with the first wave, or last (wave 3) when priority waves are on.
+ */
+function resolveAudience_(deal, audience, investors, logRows) {
+  audience = audience || { mode: 'all' };
+  var modes = audienceModes_(audience);
+  if (modes.length <= 1 || audience.mode === 'priceDrop' || audience.mode === 'recovery') {
+    var single = modes.length === 1 && audience.mode !== 'priceDrop' && audience.mode !== 'recovery' ? Object.assign({}, audience, { mode: modes[0] }) : audience;
+    var r1 = resolveOne_(deal, single, investors, logRows);
+    return { included: r1.included, excluded: r1.excluded };
+  }
+  var smartWaves = modes.indexOf('smart') > -1 && audience.waves !== false;
+  var best = {}, reasons = {};
+  modes.forEach(function (m) {
+    var a = Object.assign({}, audience, { mode: m });
+    delete a.modes;
+    var r = resolveOne_(deal, a, investors, logRows);
+    r.included.forEach(function (inv) {
+      var w = m === 'smart' ? inv._wave : m === 'selected' ? 1 : (smartWaves ? 3 : 1);
+      var b = best[inv.id];
+      if (!b) best[inv.id] = { inv: inv, wave: w, score: inv._score };
+      else {
+        b.wave = Math.min(b.wave, w);
+        if (b.score === '' || b.score === undefined) b.score = inv._score;
+      }
+    });
+    Object.keys(r.reasons).forEach(function (id) { if (!(id in reasons)) reasons[id] = r.reasons[id]; });
+  });
+  var included = Object.keys(best).map(function (id) { var b = best[id]; b.inv._wave = b.wave; b.inv._score = b.score; return b.inv; });
+  included.sort(function (a, b) { return (a._wave - b._wave) || ((Number(b._score) || 0) - (Number(a._score) || 0)) || (tierRank_(a.tier) - tierRank_(b.tier)); });
+  var ex = { inactive: 0, optedOut: 0, invalidEmail: 0, duplicate: 0, notInSegment: 0, criteria: 0, alreadySent: 0, notMatched: 0 };
+  var seen = {}, out = [];
+  included.forEach(function (inv) {
+    var e = lc_(inv.email);
+    if (seen[e]) { ex.duplicate++; return; }
+    seen[e] = true; out.push(inv);
+  });
+  Object.keys(reasons).forEach(function (id) { if (!best[id]) ex[reasons[id]]++; });
+  return { included: out, excluded: ex };
 }
 
 function describeAudience_(a) {
   a = a || {};
+  var modes = audienceModes_(a);
+  if (modes.length > 1 && a.mode !== 'priceDrop' && a.mode !== 'recovery') {
+    var extra = [];
+    if (a.matchCriteria) extra.push('buy-box match');
+    if (a.excludeAlreadySent) extra.push('excluding previous recipients');
+    return modes.map(function (m) {
+      var one = Object.assign({}, a, { mode: m, matchCriteria: false, excludeAlreadySent: false });
+      delete one.modes;
+      return describeAudience_(one);
+    }).join(' + ') + (extra.length ? '; ' + extra.join('; ') : '');
+  }
+  if (modes.length === 1 && a.mode !== 'priceDrop' && a.mode !== 'recovery') a = Object.assign({}, a, { mode: modes[0] });
   var parts = [];
   if (a.mode === 'priceDrop') parts.push('Price-reduction alert: previous recipients + matched buyers');
   else if (a.mode === 'recovery') parts.push('Dead-deal recovery: next ring of matched buyers');
@@ -7534,12 +7598,14 @@ function jobsTable(rows, showDeal) {
 
 // ---------- DISTRIBUTION WIZARD ----------
 let DIST = null;
+const AUD_ORDER = ['smart', 'all', 'segments', 'selected'];
 function openDistribute(dealId, preset) {
   const d = S.deals.find(x => x.id === dealId);
   if (!d) return;
-  DIST = { deal: d, step: 1, preset: preset || '', audience: { mode: preset || 'smart', waves: true, includeOthers: false, minScore: +S.settings.values.MATCH_MIN_SCORE || 50, tiers: [], categories: [], markets: [], investorIds: [], matchCriteria: false, excludeAlreadySent: d.timesDistributed > 0 }, preview: null, prepared: null, pickQ: '' };
+  DIST = { deal: d, step: 1, preset: preset || '', audience: { mode: preset || 'smart', modes: preset ? undefined : ['smart'], waves: true, includeOthers: false, minScore: +S.settings.values.MATCH_MIN_SCORE || 50, tiers: [], categories: [], markets: [], investorIds: [], matchCriteria: false, excludeAlreadySent: d.timesDistributed > 0 }, preview: null, prepared: null, pickQ: '' };
   renderDist();
 }
+const audModes = a => a.modes && a.mode !== 'priceDrop' && a.mode !== 'recovery' ? a.modes : [a.mode];
 function renderDist() {
   if (!DIST) return;
   const d = DIST.deal, a = DIST.audience;
@@ -7547,21 +7613,28 @@ function renderDist() {
   let body = '<div class="steps">' + steps + '</div>', foot = '';
   if (DIST.step === 1) {
     const opt = (m, t, s) => '<div class="option' + (a.mode === m ? ' on' : '') + '" data-act="distMode" data-val="' + m + '"><b>' + t + '</b><span>' + s + '</span></div>';
+    const has = m => audModes(a).includes(m);
+    const optM = (m, t, s) => '<div class="option' + (has(m) ? ' on' : '') + '" data-act="distMode" data-val="' + m + '" role="checkbox" aria-checked="' + has(m) + '"><b><span style="display:inline-flex;width:16px;height:16px;border-radius:4px;margin-right:7px;vertical-align:-2px;align-items:center;justify-content:center;font-size:11px;' + (has(m) ? 'background:var(--accent);color:#fff' : 'border:1.5px solid var(--line-2, #3a453f)') + '">' + (has(m) ? '✓' : '') + '</span>' + t + '</b><span>' + s + '</span></div>';
     body += '<div class="grid" style="grid-template-columns:1.25fr 1fr;align-items:start"><div class="stack">' +
       (DIST.preset ? '<div class="grid g2">' + (DIST.preset === 'priceDrop' ? opt('priceDrop', 'Price-reduction alert', 'Everyone who received it + matched buyers. Subject: PRICE REDUCED ' + money(d.previousPrice) + ' → ' + money(d.askingPrice)) : opt('recovery', 'Dead-deal recovery', 'The next ring of matched buyers who haven\'t received it yet')) + opt('smart', 'Normal smart match', 'Switch back to a regular send') + '</div>' : '') +
-      '<div class="grid g4"' + (DIST.preset ? ' style="display:none"' : '') + '>' + opt('smart', 'Smart match ★', 'Buyers whose buy box fits, Tier 1 first') + opt('all', 'All active investors', 'Everyone active & subscribed') + opt('segments', 'By tier / category', 'Target investor segments') + opt('selected', 'Hand-pick', 'Choose specific investors') + '</div>';
-    if (a.mode === 'segments') {
+      '<div' + (DIST.preset ? ' style="display:none"' : '') + '><div class="small muted" style="margin-bottom:6px">Pick one or more. Everyone covered by any of your choices gets the deal, once.</div><div class="grid g4">' + optM('smart', 'Smart match ★', 'Buyers whose buy box fits, Tier 1 first') + optM('all', 'All active investors', 'Everyone active & subscribed') + optM('segments', 'By tier / category', 'Target investor segments') + optM('selected', 'Hand-pick', 'Choose specific investors') + '</div>' +
+        (has('all') && audModes(a).length > 1 ? '<div class="small" style="color:var(--amber);margin-top:6px">"All active investors" already includes everyone; your other choices only set who goes first.</div>' : '') + '</div>';
+    if (has('segments')) {
+      if (audModes(a).length > 1) body += '<div class="section-title" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);color:var(--text)">By tier / category</div>';
       body += '<div><div class="section-title">Tiers</div>' + chips('d_tiers', L().tiers, a.tiers) + '</div>' +
         '<div><div class="section-title">Categories</div>' + chips('d_categories', L().categories, a.categories) + '</div>' +
         (L().markets.length ? '<div><div class="section-title">Markets</div>' + chips('d_markets', L().markets, a.markets) + '</div>' : '') +
         '<div class="small muted">Within a group any selected value matches; across groups all must match. Leave a group empty to include everyone.</div>';
     }
-    if (a.mode === 'smart') {
+    if (has('smart')) {
+      if (audModes(a).length > 1) body += '<div class="section-title" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);color:var(--text)">Smart match</div>';
       body += '<div class="grid g2" style="align-items:end">' + field('Minimum match score', '<input type="number" min="0" max="100" data-change="distNum" name="minScore" value="' + esc(a.minScore) + '">', 'Strong ≥ 70') + '<div></div></div>' +
         '<label class="check"><input type="checkbox" data-change="distOpt" name="waves"' + (a.waves ? ' checked' : '') + '> Priority waves: top-tier matches now, other matches ' + esc(S.settings.values.WAVE2_DELAY_HOURS) + 'h later</label>' +
-        '<label class="check"><input type="checkbox" data-change="distOpt" name="includeOthers"' + (a.includeOthers ? ' checked' : '') + '> Then everyone else (' + esc(S.settings.values.WAVE3_DELAY_HOURS) + 'h later)</label>';
+        '<label class="check"><input type="checkbox" data-change="distOpt" name="includeOthers"' + (a.includeOthers ? ' checked' : '') + '> Then everyone else (' + esc(S.settings.values.WAVE3_DELAY_HOURS) + 'h later)</label>' +
+        (audModes(a).length > 1 && a.waves && !(audModes(a).length === 2 && has('selected')) ? '<div class="small muted">With priority waves on, buyers added only by your other choices go in the last wave (' + esc(S.settings.values.WAVE3_DELAY_HOURS) + 'h later). Hand-picked buyers always go first. Turn waves off to send to everyone at once.</div>' : '');
     }
-    if (a.mode === 'selected') {
+    if (has('selected')) {
+      if (audModes(a).length > 1) body += '<div class="section-title" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);color:var(--text)">Hand-pick</div>';
       const q = lc(DIST.pickQ);
       const act = S.investors.filter(i => i.status === 'Active' && !i.optOut && (!q || lc([i.firstName, i.lastName, i.company, i.email, i.tier, i.categories].join(' ')).includes(q)));
       body += '<input type="search" id="pickQ" placeholder="Search investors…" value="' + esc(DIST.pickQ) + '"><div class="pick-list">' +
@@ -7569,7 +7642,7 @@ function renderDist() {
         (act.length ? '' : '<div class="empty" style="padding:20px">No active investors match.</div>') + '</div><div class="row"><button class="btn sm" data-act="pickAll">Select all shown</button><button class="btn sm ghost" data-act="pickNone">Clear</button><span class="small muted">' + a.investorIds.length + ' selected</span></div>';
     }
     body += '<div class="stack" style="padding-top:6px">' +
-      (a.mode === 'smart' ? '' : '<label class="check"><input type="checkbox" data-change="distOpt" name="matchCriteria"' + (a.matchCriteria ? ' checked' : '') + '> Only investors whose buying criteria match this deal (property type, price range, markets)</label>') +
+      (audModes(a).every(m => m === 'smart') ? '' : '<label class="check"><input type="checkbox" data-change="distOpt" name="matchCriteria"' + (a.matchCriteria ? ' checked' : '') + '> Only investors whose buying criteria match this deal (property type, price range, markets)</label>') +
       '<label class="check"><input type="checkbox" data-change="distOpt" name="excludeAlreadySent"' + (a.excludeAlreadySent ? ' checked' : '') + '> Skip investors who already received this deal' + (d.timesDistributed ? ' (sent ' + d.timesDistributed + '× before)' : '') + '</label></div>' +
       '</div><div class="card"><div class="bd" id="audienceBox"><div class="loading"><span class="spinner"></span></div></div></div></div>';
     foot = '<button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn primary" data-act="distNext" id="distNext">Next: Preview Email →</button>';
@@ -8608,7 +8681,21 @@ const ACT = {
     try { const r = await api('sendTestEmail', el.dataset.id, to); toast('Test email sent to <b>' + esc(r.sentTo) + '</b>.'); S.settings.quota = r.quota; renderChrome(); } catch (e) { fail(e); }
     el.disabled = false; el.innerHTML = old;
   },
-  distMode: el => { DIST.audience.mode = el.dataset.val; renderDist(); },
+  distMode: el => {
+    const a = DIST.audience, v = el.dataset.val;
+    syncSegments();
+    if (v === 'priceDrop' || v === 'recovery') { a.mode = v; delete a.modes; }
+    else if (a.mode === 'priceDrop' || a.mode === 'recovery') { a.mode = 'smart'; a.modes = ['smart']; }
+    else {
+      const m = a.modes || [a.mode];
+      if (m.includes(v)) {
+        if (m.length === 1) return toast('Pick at least one audience.', 'warn');
+        a.modes = m.filter(x => x !== v);
+      } else a.modes = AUD_ORDER.filter(x => x === v || m.includes(x));
+      a.mode = a.modes.length === 1 ? a.modes[0] : 'combo';
+    }
+    renderDist();
+  },
   pickAll: () => { $$('[data-change="pickInv"]').forEach(c => { if (!DIST.audience.investorIds.includes(c.value)) DIST.audience.investorIds.push(c.value); }); renderDist(); },
   pickNone: () => { DIST.audience.investorIds = []; renderDist(); },
   distNext: () => { syncSegments(); if (DIST.preview && !DIST.preview.count) return toast('No investors match this audience.', 'warn'); DIST.step = 2; renderDist(); },
@@ -8697,7 +8784,7 @@ function patchResponse(u) {
 }
 
 function syncSegments() {
-  if (!DIST || DIST.audience.mode !== 'segments') return;
+  if (!DIST || !audModes(DIST.audience).includes('segments') || !$('[data-chipgroup="d_tiers"]')) return;
   DIST.audience.tiers = chipVals('d_tiers'); DIST.audience.categories = chipVals('d_categories'); DIST.audience.markets = chipVals('d_markets');
 }
 

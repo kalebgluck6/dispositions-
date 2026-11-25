@@ -153,6 +153,10 @@ Buyers outside what they told you they buy are **excluded**, for example: outsid
 
 The delays are adjustable in Settings. The distribution log records each buyer's wave and match score.
 
+**Combine audiences:** you can turn on any mix of the four audience options: **Smart match**, **All active investors**, **By tier / category** and **Hand-pick**. Everyone covered by any of your choices gets the deal, and each investor gets only one email.
+* Hand-picked buyers always go in wave 1.
+* With priority waves on, buyers added only by "All" or "By tier / category" go in the last wave. Turn waves off to send to everyone at once.
+
 ### Disposition Pipeline
 Every deal has one of 11 live stages: Ready for Disposition → Distributed → Buyer Interested → Offer Received → Negotiating → Buyer Selected → Assignment Signed → EMD Received → Closing Scheduled → Closed, or Dead Deal.
 

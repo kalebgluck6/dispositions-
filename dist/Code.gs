@@ -2004,7 +2004,7 @@ function matchesCriteria_(inv, deal) {
   return true;
 }
 
-function resolveAudience_(deal, audience, investors, logRows) {
+function resolveOne_(deal, audience, investors, logRows) {
   audience = audience || { mode: 'all' };
   var mode = audience.mode || 'all';
   var tiers = list_(audience.tiers), cats = list_(audience.categories), mkts = list_(audience.markets);
@@ -2044,40 +2044,104 @@ function resolveAudience_(deal, audience, investors, logRows) {
   }
   var seen = {};
   var included = [];
+  var reasons = {};
   investors.forEach(function (inv) {
     if (mode === 'selected' && picked.indexOf(inv.id) === -1) return; // not part of the hand-picked list at all
-    if ((str_(inv.status) || 'Active') !== 'Active') { ex.inactive++; return; }
-    if (bool_(inv.optOut)) { ex.optedOut++; return; }
+    if ((str_(inv.status) || 'Active') !== 'Active') { ex.inactive++; reasons[inv.id] = 'inactive'; return; }
+    if (bool_(inv.optOut)) { ex.optedOut++; reasons[inv.id] = 'optedOut'; return; }
     var email = lc_(inv.email);
-    if (!isEmail_(email)) { ex.invalidEmail++; return; }
-    if (seen[email]) { ex.duplicate++; return; }
+    if (!isEmail_(email)) { ex.invalidEmail++; reasons[inv.id] = 'invalidEmail'; return; }
+    if (seen[email]) { ex.duplicate++; reasons[inv.id] = 'duplicate'; return; }
     if (mode === 'segments') {
-      if (tiers.length && !overlap_([inv.tier], tiers)) { ex.notInSegment++; return; }
-      if (cats.length && !overlap_(list_(inv.categories), cats)) { ex.notInSegment++; return; }
-      if (mkts.length && !overlap_(list_(inv.markets), mkts)) { ex.notInSegment++; return; }
+      if (tiers.length && !overlap_([inv.tier], tiers)) { ex.notInSegment++; reasons[inv.id] = 'notInSegment'; return; }
+      if (cats.length && !overlap_(list_(inv.categories), cats)) { ex.notInSegment++; reasons[inv.id] = 'notInSegment'; return; }
+      if (mkts.length && !overlap_(list_(inv.markets), mkts)) { ex.notInSegment++; reasons[inv.id] = 'notInSegment'; return; }
     }
-    if (audience.matchCriteria && !matchesCriteria_(inv, deal)) { ex.criteria++; return; }
+    if (audience.matchCriteria && !matchesCriteria_(inv, deal)) { ex.criteria++; reasons[inv.id] = 'criteria'; return; }
     var wave = 1, score = '';
     if (smart) {
       var m = smart[inv.id];
       score = m.score;
       if (!m.matched && !(audience._priceDrop && priorRecipients[inv.id])) {
-        if (!audience.includeOthers) { ex.notMatched++; return; }
+        if (!audience.includeOthers) { ex.notMatched++; reasons[inv.id] = 'notMatched'; return; }
         wave = 3;
       } else wave = audience.waves === false || m.tierRank === topRank ? 1 : 2;
     }
-    if (already[inv.id]) { ex.alreadySent++; return; }
+    if (already[inv.id]) { ex.alreadySent++; reasons[inv.id] = 'alreadySent'; return; }
     seen[email] = true;
     inv._wave = wave; inv._score = score;
     included.push(inv);
   });
   // highest priority first: wave, then match score, then tier
   included.sort(function (a, b) { return (a._wave - b._wave) || ((Number(b._score) || 0) - (Number(a._score) || 0)) || (tierRank_(a.tier) - tierRank_(b.tier)); });
-  return { included: included, excluded: ex };
+  return { included: included, excluded: ex, reasons: reasons };
+}
+
+var AUDIENCE_MODES = ['smart', 'all', 'segments', 'selected'];
+
+/** Audience options picked together (any of smart / all / segments / selected). */
+function audienceModes_(audience) {
+  var m = (audience && audience.modes || []).filter(function (x, i, arr) { return AUDIENCE_MODES.indexOf(x) > -1 && arr.indexOf(x) === i; });
+  return m;
+}
+
+/**
+ * Resolves who receives a deal. Several audience options can be combined: everyone covered by any
+ * of them receives it, once. Smart-match buyers keep their priority waves; buyers added only by
+ * the other options go out with the first wave, or last (wave 3) when priority waves are on.
+ */
+function resolveAudience_(deal, audience, investors, logRows) {
+  audience = audience || { mode: 'all' };
+  var modes = audienceModes_(audience);
+  if (modes.length <= 1 || audience.mode === 'priceDrop' || audience.mode === 'recovery') {
+    var single = modes.length === 1 && audience.mode !== 'priceDrop' && audience.mode !== 'recovery' ? Object.assign({}, audience, { mode: modes[0] }) : audience;
+    var r1 = resolveOne_(deal, single, investors, logRows);
+    return { included: r1.included, excluded: r1.excluded };
+  }
+  var smartWaves = modes.indexOf('smart') > -1 && audience.waves !== false;
+  var best = {}, reasons = {};
+  modes.forEach(function (m) {
+    var a = Object.assign({}, audience, { mode: m });
+    delete a.modes;
+    var r = resolveOne_(deal, a, investors, logRows);
+    r.included.forEach(function (inv) {
+      var w = m === 'smart' ? inv._wave : m === 'selected' ? 1 : (smartWaves ? 3 : 1);
+      var b = best[inv.id];
+      if (!b) best[inv.id] = { inv: inv, wave: w, score: inv._score };
+      else {
+        b.wave = Math.min(b.wave, w);
+        if (b.score === '' || b.score === undefined) b.score = inv._score;
+      }
+    });
+    Object.keys(r.reasons).forEach(function (id) { if (!(id in reasons)) reasons[id] = r.reasons[id]; });
+  });
+  var included = Object.keys(best).map(function (id) { var b = best[id]; b.inv._wave = b.wave; b.inv._score = b.score; return b.inv; });
+  included.sort(function (a, b) { return (a._wave - b._wave) || ((Number(b._score) || 0) - (Number(a._score) || 0)) || (tierRank_(a.tier) - tierRank_(b.tier)); });
+  var ex = { inactive: 0, optedOut: 0, invalidEmail: 0, duplicate: 0, notInSegment: 0, criteria: 0, alreadySent: 0, notMatched: 0 };
+  var seen = {}, out = [];
+  included.forEach(function (inv) {
+    var e = lc_(inv.email);
+    if (seen[e]) { ex.duplicate++; return; }
+    seen[e] = true; out.push(inv);
+  });
+  Object.keys(reasons).forEach(function (id) { if (!best[id]) ex[reasons[id]]++; });
+  return { included: out, excluded: ex };
 }
 
 function describeAudience_(a) {
   a = a || {};
+  var modes = audienceModes_(a);
+  if (modes.length > 1 && a.mode !== 'priceDrop' && a.mode !== 'recovery') {
+    var extra = [];
+    if (a.matchCriteria) extra.push('buy-box match');
+    if (a.excludeAlreadySent) extra.push('excluding previous recipients');
+    return modes.map(function (m) {
+      var one = Object.assign({}, a, { mode: m, matchCriteria: false, excludeAlreadySent: false });
+      delete one.modes;
+      return describeAudience_(one);
+    }).join(' + ') + (extra.length ? '; ' + extra.join('; ') : '');
+  }
+  if (modes.length === 1 && a.mode !== 'priceDrop' && a.mode !== 'recovery') a = Object.assign({}, a, { mode: modes[0] });
   var parts = [];
   if (a.mode === 'priceDrop') parts.push('Price-reduction alert: previous recipients + matched buyers');
   else if (a.mode === 'recovery') parts.push('Dead-deal recovery: next ring of matched buyers');
