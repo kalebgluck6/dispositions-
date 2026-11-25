@@ -308,6 +308,13 @@ Each buyer waiting for review who has no email shows **TruePeopleSearch** and **
 
 Paste what you find into **+ Add email** (email and phone) and click **Save**. These sites don't allow automated searches, so the app never searches them on its own.
 
+### Automatic skip trace with DealMachine
+If DealMachine is connected, it skip traces automatically. After every run, each buyer missing an email is looked up by the property they bought (DealMachine **Enrich by Address**). The owner's email, phone and name are filled in.
+* **Cost:** 1 DealMachine people credit per contact found. Your DealMachine monthly credit limit still applies.
+* **No seller contacts:** if DealMachine still lists the previous owner, the buyer is skipped instead of saving the seller's contact. They're tried again later with the **Skip trace** button.
+* **Individuals:** the contact must have the buyer's last name. They can also be found at their mailing address.
+* **Companies:** never matched to whoever owns their office building.
+
 ### Automatic skip trace (BatchData, optional, paid)
 Buyers from public records usually come without an email. Connect BatchData once, and every buyer missing an email is skip traced automatically after each morning and night run. You don't have to do anything by hand.
 

@@ -5815,6 +5815,8 @@ function saveDealMachineKey(key) {
     if (old) props.setProperty('DM_API_KEY', old); else props.deleteProperty('DM_API_KEY');
     throw e;
   }
+  // connecting DealMachine turns on its buyer search and automatic skip tracing of buyers missing an email
+  if (!old) { setSetting_('INTAKE_DM_ON', 'TRUE'); setSetting_('SKIPTRACE_ON', 'TRUE'); }
   return getIntakeStatus();
 }
 
@@ -5968,13 +5970,66 @@ function skipTracePick_(item) {
  * Skip traces buyers missing an email and writes what it finds. Caller holds the lock.
  * ids (optional) limits it to specific buyers (manual "Skip trace" buttons).
  */
+/** Which service skip traces: DealMachine when connected (you already pay for it), else BatchData. */
+function skipProvider_() { return dmKey_() ? 'dealmachine' : bdKey_() ? 'batchdata' : ''; }
+
+/** Picks the best email / phone / contact from DealMachine contacts (Enrich by Address). */
+function dmSkipPick_(contacts, inv, requireName) {
+  var cs = (contacts || []).filter(function (c) { return c && c.is_likely_renter !== true; });
+  var company = str_(inv.company) && ENTITY_RE.test(inv.company);
+  if (requireName && !company) {
+    var last = lc_(inv.lastName);
+    cs = cs.filter(function (c) { return last && lc_(c.last_name) === last; });
+  }
+  cs.sort(function (a, b) { return (b.is_likely_owner ? 1 : 0) - (a.is_likely_owner ? 1 : 0); });
+  var rank = { very_likely_deliverable: 0, likely_deliverable: 1, deliverable: 1, unknown: 2 };
+  var emails = [], phones = [], contact = null;
+  cs.forEach(function (c) {
+    var es = (c.emails || []).filter(function (e) { return e && e.address && !/undeliverable|invalid/i.test(e.verification_status || ''); })
+      .sort(function (a, b) { return ((rank[a.verification_status] === undefined ? 2 : rank[a.verification_status]) - (rank[b.verification_status] === undefined ? 2 : rank[b.verification_status])) || ((b.match_confidence || 0) - (a.match_confidence || 0)); });
+    es.forEach(function (e) { var v = lc_(e.address); if (isEmail_(v) && emails.indexOf(v) === -1) emails.push(v); });
+    var ps = (c.phones || []).filter(function (x) { return x && x.number; }).sort(function (a, b) {
+      return ((/wireless|mobile/i.test(a.type || '') ? 0 : 1) + (a.do_not_call ? 2 : 0)) - ((/wireless|mobile/i.test(b.type || '') ? 0 : 1) + (b.do_not_call ? 2 : 0));
+    });
+    ps.forEach(function (x) { var n = formatPhone_(x.number); if (n && !phones.some(function (q) { return q.n === n; })) phones.push({ n: n, dnc: !!x.do_not_call, type: x.type || '' }); });
+    if (!contact && (es.length || ps.length)) contact = { first: c.first_name || '', last: c.last_name || '', full: c.full_name || ((c.first_name || '') + ' ' + (c.last_name || '')).trim() };
+  });
+  return { emails: emails, phones: phones, contact: contact, litigator: false };
+}
+
+/** True when DealMachine's owner of record is this buyer (not the seller, if its data isn't updated yet). */
+function sameOwner_(dmOwner, inv) {
+  if (!str_(dmOwner)) return true;
+  var stop = /^(llc|inc|corp|co|company|the|of|and|lp|llp|ltd|trust|trustee|holdings?|properties|property|group|investments?|homes?|i|ii|iii)$/;
+  var words = function (x) { return normKey_(x).split(/\s+/).filter(function (w) { return w.length > 1 && !stop.test(w); }); };
+  var mine = words(str_(inv.company) || (str_(inv.firstName) + ' ' + str_(inv.lastName)));
+  var theirs = words(dmOwner);
+  if (!mine.length) return true;
+  return mine.some(function (w) { return theirs.indexOf(w) > -1; });
+}
+
+/** DealMachine Enrich by Address item for a skip-trace request. */
+function dmAddressItem_(req) {
+  var a = req && req.propertyAddress;
+  if (!a || !a.street) return null;
+  if (a.city && a.state) { var o = { street: a.street, city: a.city, state: a.state }; if (a.zip) o.zip = a.zip; return o; }
+  var place = req.county ? req.county + ' County' : a.zip || '';
+  return place ? { full_address: [a.street, place, ((req.state || a.state || '') + ' ' + (a.zip || '')).trim()].filter(String).join(', ') } : null;
+}
+
 function skipTraceRun_(ids) {
   var s = getSettings_();
   var out = { status: 'ok', traced: 0, found: 0, emails: 0, phones: 0, noMatch: 0, skipped: 0, note: '' };
-  if (!bdKey_()) { out.status = 'off'; out.note = 'Add a BatchData API key to skip trace automatically.'; return out; }
+  var provider = skipProvider_();
+  out.provider = provider;
+  if (!provider) { out.status = 'off'; out.note = 'Connect DealMachine (or BatchData) to skip trace automatically.'; return out; }
   if (!ids && !bool_(s.SKIPTRACE_ON)) { out.status = 'off'; return out; }
   var cap = parseInt(s.SKIPTRACE_MONTHLY_CAP, 10) || 0;
   var room = cap ? cap - bdMatchesUsed_() : Infinity;
+  if (provider === 'dealmachine') {
+    var dmCap = Math.max(0, parseInt(s.INTAKE_DM_MONTHLY_CAP, 10) || 0);
+    if (dmCap && dmCreditsUsed_() >= dmCap) { out.status = 'capped'; out.note = 'DealMachine monthly credit limit reached (' + dmCap + '). Raise it on the DealMachine card.'; return out; }
+  }
   if (room <= 0) { out.status = 'capped'; out.note = 'Monthly skip-trace limit reached (' + cap + ' matches). Raise it on the Skip Trace card.'; return out; }
   var max = Math.max(1, parseInt(s.SKIPTRACE_MAX_PER_RUN, 10) || 100);
   var cands = skipTraceCandidates_(ids).slice(0, Math.min(max, room));
@@ -5985,7 +6040,34 @@ function skipTraceRun_(ids) {
   var byId = {}, results = {};
   cands.forEach(function (c) { byId[c.id] = c; });
 
+  var stale = {};
+  var passDm = function (list, mailingAsProperty) {
+    var items = [];
+    list.forEach(function (inv) {
+      var it = dmAddressItem_(skipTraceRequest_(inv, mailingAsProperty));
+      if (it) items.push({ id: inv.id, item: it });
+    });
+    for (var i = 0; i < items.length; i += 50) {
+      var chunk = items.slice(i, i + 50);
+      var json = dmFetch_('post', '/enrichment/address', { data: chunk.map(function (c) { return c.item; }), anchor: 'people', contact_audience: 'owners', fields: ['owner_1_full_name'] });
+      dmAddCredits_((json.credits && Number(json.credits.used)) || 0);
+      var found = 0;
+      (json.data || []).forEach(function (item, k) {
+        var id = chunk[k] && chunk[k].id;
+        if (!id || !byId[id] || !item || !item.matched) return;
+        // right after a sale DealMachine may still list the seller: skip when its owner isn't this buyer
+        if (!mailingAsProperty && !sameOwner_(item.owner_1_full_name, byId[id])) { stale[id] = true; return; }
+        // a person must carry the buyer's own last name
+        var pick = dmSkipPick_(item.contacts, byId[id], true);
+        if (pick.emails.length || pick.phones.length) { results[id] = pick; found++; }
+      });
+      bdAddMatches_(found);
+    }
+    return items.length;
+  };
+
   var pass = function (list, mailingAsProperty) {
+    if (provider === 'dealmachine') return passDm(list, mailingAsProperty);
     var reqs = [];
     list.forEach(function (inv) { var r = skipTraceRequest_(inv, mailingAsProperty); if (r) reqs.push(r); });
     for (var i = 0; i < reqs.length; i += BD_BATCH) {
@@ -6006,10 +6088,15 @@ function skipTraceRun_(ids) {
 
   var sent = pass(cands, false);
   // second chance: an LLC's mailing address is often its principal's home or office
-  var retry = cands.filter(function (c) { return !results[c.id] && parseAddress_(c.mailingAddress) && parseAddress_(purchaseAddress_(c)); });
+  var retry = cands.filter(function (c) {
+    if (results[c.id] || !parseAddress_(c.mailingAddress) || !parseAddress_(purchaseAddress_(c))) return false;
+    // DealMachine returns the owner of the building at that address: only useful for people, not company offices
+    return provider !== 'dealmachine' || !(str_(c.company) && ENTITY_RE.test(c.company));
+  });
   if (retry.length) pass(retry, true);
 
   var today = fmtDate_(new Date(), 'MMM d, yyyy');
+  var via = provider === 'dealmachine' ? ' (DealMachine)' : ' (BatchData)';
   cands.forEach(function (inv) {
     var r = results[inv.id], f = { skipTraced: new Date(), updated: new Date() };
     if (!skipTraceRequest_(inv, false)) {
@@ -6017,7 +6104,7 @@ function skipTraceRun_(ids) {
       f.skipTraceResult = 'No usable address to skip trace';
     } else if (!r) {
       out.noMatch++;
-      f.skipTraceResult = 'No match';
+      f.skipTraceResult = stale[inv.id] ? 'No match yet (DealMachine still shows the previous owner)' : 'No match';
     } else {
       out.found++;
       if (r.emails.length) { f.email = r.emails[0]; out.emails++; }
@@ -6033,12 +6120,12 @@ function skipTraceRun_(ids) {
       if (r.litigator) extra.push('⚠ known TCPA litigator: do not call or text');
       var notes = str_(inv.notes).replace(/\s*Needs an email address before approval \(skip trace this owner\)\.?/, '');
       if (f.email) notes = notes.replace(/\s*Skip traced[^.]*\./g, '');
-      f.notes = (notes + ' Skip traced ' + today + ': ' + extra.join('; ') + '.').trim().slice(0, 1500);
+      f.notes = (notes + ' Skip traced' + via + ' ' + today + ': ' + extra.join('; ') + '.').trim().slice(0, 1500);
     }
     if (rowOf[inv.id]) updateObject_(SHEET.INVESTORS, rowOf[inv.id], f);
     out.traced++;
   });
-  out.note = out.traced + ' skip traced: ' + out.emails + ' emails, ' + out.phones + ' phones found' + (out.noMatch ? ', ' + out.noMatch + ' no match' : '') +
+  out.note = out.traced + ' skip traced' + via + ': ' + out.emails + ' emails, ' + out.phones + ' phones found' + (out.noMatch ? ', ' + out.noMatch + ' no match' : '') +
     (sent < cands.length ? ', ' + (cands.length - sent) + ' without an address' : '');
   setSetting_('LAST_SKIPTRACE', JSON.stringify({ at: new Date().toISOString(), note: out.note }));
   return out;
@@ -6050,7 +6137,7 @@ function skipTraceStatus_() {
   try { last = JSON.parse(s.LAST_SKIPTRACE || '{}'); } catch (e) { last = {}; }
   var key = bdKey_();
   return {
-    hasKey: !!key, keyHint: key ? '…' + key.slice(-4) : '', on: bool_(s.SKIPTRACE_ON),
+    hasKey: !!skipProvider_(), provider: skipProvider_(), bdKey: !!key, keyHint: key ? '…' + key.slice(-4) : '', on: bool_(s.SKIPTRACE_ON),
     matchesThisMonth: bdMatchesUsed_(), cap: parseInt(s.SKIPTRACE_MONTHLY_CAP, 10) || 0,
     waiting: skipTraceCandidates_().length, last: last
   };
@@ -6078,7 +6165,7 @@ function skipTraceNow(ids) {
   requireRole_('Rep');
   return withLock_(function () {
     var r = skipTraceRun_(ids && ids.length ? ids : null);
-    if (r.status === 'off' && !bdKey_()) throw new Error(r.note);
+    if (r.status === 'off' && !skipProvider_()) throw new Error(r.note);
     if (r.status === 'capped') throw new Error(r.note);
     return { result: r, status: getIntakeStatus() };
   });

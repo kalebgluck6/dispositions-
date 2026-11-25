@@ -436,6 +436,8 @@ function saveDealMachineKey(key) {
     if (old) props.setProperty('DM_API_KEY', old); else props.deleteProperty('DM_API_KEY');
     throw e;
   }
+  // connecting DealMachine turns on its buyer search and automatic skip tracing of buyers missing an email
+  if (!old) { setSetting_('INTAKE_DM_ON', 'TRUE'); setSetting_('SKIPTRACE_ON', 'TRUE'); }
   return getIntakeStatus();
 }
 

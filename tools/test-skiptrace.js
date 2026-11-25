@@ -136,6 +136,54 @@ step('free lookup: email and phone pasted by hand are saved', () => {
   assert.strictEqual(inv(/No Address/).skipTraceResult, 'Looked up by hand');
 });
 
+step('DealMachine connected: buyers missing an email are skip traced with Enrich by Address', () => {
+  const dmCalls = [];
+  const keep = M.fetchHandler;
+  const dir = {
+    '300 Harbor Dr': [{ first_name: 'Rita', last_name: 'Vance', full_name: 'Rita Vance', is_likely_owner: true,
+      emails: [{ address: 'rita.old@aol.com', verification_status: 'unknown', match_confidence: 60 }, { address: 'Rita@HarborFlips.com', verification_status: 'very_likely_deliverable', match_confidence: 90 }],
+      phones: [{ number: '7575550300', type: 'landline', do_not_call: false }, { number: '7575550301', type: 'wireless', do_not_call: false }] },
+      { first_name: 'Tom', last_name: 'Tenant', is_likely_renter: true, emails: [{ address: 'tenant@x.com', verification_status: 'very_likely_deliverable' }], phones: [] }],
+    '40 Main St': [{ first_name: 'Someone', last_name: 'Else', is_likely_owner: true, emails: [{ address: 'else@x.com', verification_status: 'very_likely_deliverable' }], phones: [] }],
+    '7 Stale Way': [{ first_name: 'John', last_name: 'Seller', is_likely_owner: true, emails: [{ address: 'seller@x.com', verification_status: 'very_likely_deliverable' }], phones: [] }],
+    '12 Pine Ct': [{ first_name: 'Lena', last_name: 'Park', is_likely_owner: true, emails: [{ address: 'lena@parkhomes.com', verification_status: 'likely_deliverable' }], phones: [] }]
+  };
+  M.fetchHandler = (url, opts) => {
+    if (url === 'https://api.v2.dealmachine.com/v1/enrichment/address') {
+      const body = JSON.parse(opts.payload); dmCalls.push(body);
+      const owners = { '300 Harbor Dr': 'HARBOR FLIPS LLC', '40 Main St': 'ELSE SOMEONE', '12 Pine Ct': 'PARK LENA', '7 Stale Way': 'OLD SELLER JOHN' };
+      const data = body.data.map(it => { const st = it.street || String(it.full_address).split(',')[0]; const c = dir[st]; return c ? { input: it, matched: true, owner_1_full_name: owners[st], contacts: c } : { input: it, matched: false, match_failure: { code: 'not_found' } }; });
+      return { code: 200, body: { data, totals: { submitted: data.length, matched: data.filter(d => d.matched).length }, credits: { used: data.filter(d => d.matched).length, properties: 0, people: data.filter(d => d.matched).length } } };
+    }
+    return keep(url, opts);
+  };
+  g.PropertiesService.getScriptProperties().setProperty('DM_API_KEY', 'dm_sk_live_testkey1234');
+  add({ company: 'Harbor Flips LLC', mailingAddress: '9 Office Park, Norfolk, VA 23510', lastPurchaseAddress: '300 Harbor Dr, Norfolk, VA', purchaseCount: 2 });
+  add({ firstName: 'Lena', lastName: 'Park', mailingAddress: '12 Pine Ct, Chesapeake, VA 23320', lastPurchaseAddress: '40 Main St, Suffolk, VA', purchaseCount: 2 });
+  add({ company: 'Fresh Buy LLC', lastPurchaseAddress: '7 Stale Way, Norfolk, VA', purchaseCount: 2 });
+  add({ company: 'Office Only LLC', mailingAddress: '300 Harbor Dr, Norfolk, VA 23510', lastPurchaseAddress: '1 Nowhere Rd, Suffolk, VA', purchaseCount: 2 });
+  const before = g.dmCreditsUsed_();
+  const r = g.runBuyerIntake().results.skiptrace;
+  assert.strictEqual(r.provider, 'dealmachine', JSON.stringify(r));
+  assert.strictEqual(dmCalls[0].anchor, 'people'); assert.strictEqual(dmCalls[0].contact_audience, 'owners');
+  assert(dmCalls[0].data.some(d => d.street === '300 Harbor Dr' && d.city === 'Norfolk' && d.state === 'VA'));
+  assert.strictEqual(JSON.stringify(dmCalls[0].fields), JSON.stringify(['owner_1_full_name']));
+  const hf = inv(/Harbor Flips/);
+  assert.strictEqual(hf.email, 'rita@harborflips.com', 'deliverable email preferred');
+  assert.strictEqual(hf.phone, '(757) 555-0301', 'mobile preferred');
+  assert.strictEqual(hf.firstName + ' ' + hf.lastName, 'Rita Vance');
+  assert(!/tenant/.test(hf.notes), 'renters ignored'); assert(/DealMachine/.test(hf.notes));
+  const lp = inv(/Park/);
+  assert.strictEqual(lp.email, 'lena@parkhomes.com', 'person found at their mailing address (same last name)');
+  assert.strictEqual(inv(/Office Only/).email, '', 'company never matched to whoever owns its mailing address');
+  assert(!dmCalls.some((c, i) => i > 0 && c.data.some(d => d.street === '300 Harbor Dr')), 'no mailing retry for companies');
+  assert.strictEqual(inv(/Fresh Buy/).email, '', 'seller\'s email never saved');
+  assert(/previous owner/.test(inv(/Fresh Buy/).skipTraceResult));
+  assert.strictEqual(g.dmCreditsUsed_() - before, 4, 'DealMachine credits counted');
+  assert(/1 Nowhere Rd/.test(JSON.stringify(dmCalls[0])));
+  M.fetchHandler = keep;
+});
+
 step('address parsing', () => {
   assert.strictEqual(JSON.stringify(g.parseAddress_('00103 Pearl St, Elizabeth City, NC 27909-1234')), JSON.stringify({ street: '00103 Pearl St', city: 'Elizabeth City', state: 'NC', zip: '27909' }));
   assert.strictEqual(JSON.stringify(g.parseAddress_('5 Elm St, Isle Of Wight County, VA')), JSON.stringify({ street: '5 Elm St', county: 'Isle Of Wight', state: 'VA' }));
