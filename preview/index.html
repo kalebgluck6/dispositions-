@@ -6616,6 +6616,32 @@ function skipTraceNow(ids) {
   });
 }
 
+/** Saves an email / phone found by hand (free people-search lookup). */
+function setInvestorContact(id, email, phone) {
+  requireRole_('Rep');
+  email = lc_(email).replace(/^mailto:/, '');
+  phone = str_(phone);
+  if (email && !isEmail_(email)) throw new Error('That email address doesn\'t look right.');
+  if (!email && !phone) throw new Error('Enter an email or a phone number.');
+  return withLock_(function () {
+    var t = readTable_(SHEET.INVESTORS);
+    var inv = t.rows.filter(function (r) { return r.id === id; })[0];
+    if (!inv) throw new Error('Buyer not found.');
+    if (email) {
+      var dup = t.rows.filter(function (r) { return r.id !== id && lc_(r.email) === email; })[0];
+      if (dup) throw new Error('That email already belongs to ' + investorName_(dup) + ' (' + dup.id + ').');
+    }
+    var f = { updated: new Date(), skipTraced: new Date(), skipTraceResult: 'Looked up by hand' };
+    if (email) f.email = email;
+    if (phone) f.phone = formatPhone_(phone) || phone;
+    if (email) f.notes = str_(inv.notes).replace(/\s*Needs an email address before approval \(skip trace this owner\)\.?/, '').trim();
+    updateObject_(SHEET.INVESTORS, inv._row, f);
+    Object.keys(f).forEach(function (k) { inv[k] = f[k]; });
+    delete inv._row;
+    return toClient_(inv);
+  });
+}
+
 // ---- Verification.gs ----
 /**
  * Verification.gs — Buyer Verification Center.
@@ -7786,7 +7812,8 @@ VIEWS.intake = {
       (pending.length ? '<div style="overflow:auto"><table class="t"><thead><tr><th style="width:36px"><input type="checkbox" data-change="intakeSelAll"' + (pending.every(p => sel.has(p.id)) ? ' checked' : '') + '></th><th>Buyer</th><th>Contact</th><th>Buy box</th><th>Why they\'re a buyer</th><th></th></tr></thead><tbody>' +
         pending.map(i => '<tr><td><input type="checkbox" data-change="intakeSel" value="' + esc(i.id) + '"' + (sel.has(i.id) ? ' checked' : '') + '></td>' +
           '<td class="nowrap"><div style="font-weight:600">' + esc((i.firstName + ' ' + i.lastName).trim() || i.company) + '</div><div class="small muted">' + esc(i.firstName || i.lastName ? i.company : '') + '</div><span class="tag">' + esc(i.source) + '</span> <span class="small muted">' + ago(i.dateAdded) + '</span></td>' +
-          '<td class="nowrap">' + (i.email ? esc(i.email) : '<span style="color:var(--amber)">⚠ Needs email</span>' + (i.skipTraceResult ? '<div class="small muted">Skip trace: ' + esc(i.skipTraceResult) + '</div>' : '') + '<div><button class="btn sm ghost" style="padding:2px 8px;margin-top:3px" data-act="skipTraceOne" data-id="' + esc(i.id) + '">Skip trace</button></div>') + '<div class="small muted">' + esc(i.phone) + '</div>' + (i.mailingAddress ? '<div class="small muted">' + esc(i.mailingAddress) + '</div>' : '') + '</td>' +
+          '<td class="nowrap">' + (i.email ? esc(i.email) : '<span style="color:var(--amber)">⚠ Needs email</span>' + (i.skipTraceResult ? '<div class="small muted">Skip trace: ' + esc(i.skipTraceResult) + '</div>' : '') + lookupLinks(i) +
+            ((st.skipTrace || {}).hasKey ? '<div><button class="btn sm ghost" style="padding:2px 8px;margin-top:3px" data-act="skipTraceOne" data-id="' + esc(i.id) + '">Auto skip trace</button></div>' : '')) + '<div class="small muted">' + esc(i.phone) + '</div>' + (i.mailingAddress ? '<div class="small muted">' + esc(i.mailingAddress) + '</div>' : '') + '</td>' +
           '<td class="small">' + (i.markets ? '<div>' + esc(i.markets) + '</div>' : '') + ((isNum(i.minPrice) && i.minPrice !== '') || (isNum(i.maxPrice) && i.maxPrice !== '') ? '<div>' + short$(i.minPrice || 0) + ' – ' + (i.maxPrice !== '' ? short$(i.maxPrice) : 'any') + '</div>' : '') +
           '<div class="muted">' + esc(list(i.propertyTypes).join(', ')) + '</div><div>' + list(i.categories).map(c => '<span class="tag">' + esc(c) + '</span>').join('') + '</div></td>' +
           '<td class="small" style="max-width:340px;color:var(--text-2)">' + esc(i.purchases || i.criteria || i.notes || '').slice(0, 260) + '</td>' +
@@ -7811,9 +7838,10 @@ VIEWS.intake = {
     // automatic skip trace
     {
       const sk = st.skipTrace || {}, lr = (st.lastResult || {}).skiptrace;
-      h += '<div class="card" data-src="skiptrace" style="margin-bottom:18px"><div class="hd"><h3>Automatic Skip Trace (BatchData)</h3><div style="flex:1"></div>' +
+      h += '<div class="card" data-src="skiptrace" style="margin-bottom:18px"><div class="hd"><h3>Skip Trace</h3><div style="flex:1"></div>' +
         (sk.hasKey ? '<label class="check"><input type="checkbox" data-change="skipToggle"' + (sk.on ? ' checked' : '') + '> ' + (sk.on ? 'On' : 'Off') + '</label>' : '<span class="tag" style="color:var(--amber)">Not connected</span>') + '</div>' +
-        '<div class="bd stack"><div class="small muted">Buyers from public records usually come without an email. After every morning and night run, each new buyer missing an email is skip traced automatically. The best email, best phone and the contact person behind an LLC are filled in, and the rest are kept in the buyer\'s notes. Numbers on the federal TCPA blocklist are left out. BatchData only charges for matches.</div>' +
+        '<div class="bd stack"><div class="small muted"><b style="color:var(--text)">Free:</b> each buyer waiting for review who has no email has <b style="color:var(--text)">TruePeopleSearch</b> and <b style="color:var(--text)">CyberBackgroundChecks</b> links that open the search already filled in, plus a company-owner lookup for LLCs. Copy what you find into <b style="color:var(--text)">+ Add email</b>. Those sites don\'t allow automated searches, so this part stays one click per buyer.</div>' +
+        '<div class="small muted"><b style="color:var(--text)">Optional, paid:</b> connect BatchData to skip trace every new buyer automatically after each run (charged only for matches). Leave this empty to stay free: nothing is charged without a token.</div>' +
         '<div class="field"><label>BatchData API token ' + (sk.hasKey ? '<span style="color:var(--accent-2)">· connected (' + esc(sk.keyHint) + ')</span>' : '') + '</label><div class="row" style="flex-wrap:nowrap"><input type="password" id="bdKey" autocomplete="off" placeholder="' + (sk.hasKey ? 'Paste a new token to replace it' : 'Paste your API token') + '"><button class="btn sm primary" data-act="bdSaveKey">Save & test</button></div>' +
           '<div class="hint">At <a href="https://app.batchdata.com" target="_blank">app.batchdata.com</a> → Settings → API Tokens → create a token with Skip Trace access and copy it here. It\'s stored privately in your Google script, never in the spreadsheet.</div></div>' +
         '<div class="grid g4">' + cfg('SKIPTRACE_MAX_PER_RUN', 'Max buyers per run', 'number') + cfg('SKIPTRACE_MONTHLY_CAP', 'Monthly match limit (0 = none)', 'number') + yn('SKIPTRACE_ACTIVE_TOO', 'Also approved buyers missing an email') +
@@ -7875,6 +7903,38 @@ VIEWS.intake = {
   },
   mount() { if (!S.intake) api('getIntakeStatus').then(st => { S.intake = st; if (S.view === 'intake') render(); }).catch(fail); }
 };
+// ---------- free people-search lookups (open in the user's own browser) ----------
+function splitAddr(a) {
+  const p = String(a || '').split(',').map(x => x.trim()).filter(Boolean);
+  if (!p.length || !/\d/.test(p[0]) || /^p\.?\s*o\.?\s*box/i.test(p[0])) return null;
+  const m = (p[p.length - 1] || '').match(/^([A-Za-z]{2})(?:\s+(\d{5}))?/);
+  const city = p.slice(1, m ? -1 : undefined).join(' ').replace(/\s*county\b.*$/i, '');
+  return { street: p[0].replace(/^0+(?=\d)/, '').replace(/\s+(ste|suite|unit|apt|#)\b.*$/i, ''), city, state: m ? m[1].toUpperCase() : '', zip: m && m[2] && m[2] !== '00000' ? m[2] : '' };
+}
+const slug = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+function lookupLinks(i) {
+  const isCo = !!i.company && !(i.firstName || i.lastName);
+  const mail = splitAddr(i.mailingAddress);
+  const name = (i.firstName + ' ' + i.lastName).trim();
+  const links = [];
+  const csz = a => a.city ? a.city + ', ' + a.state : a.zip || a.state;
+  if (!isCo && name && mail) {
+    links.push(['TruePeopleSearch', 'https://www.truepeoplesearch.com/results?name=' + encodeURIComponent(name) + '&citystatezip=' + encodeURIComponent(csz(mail))]);
+    links.push(['CyberBackgroundChecks', 'https://www.cyberbackgroundchecks.com/people/' + slug(name) + '/' + slug(mail.state) + (mail.city ? '/' + slug(mail.city) : '')]);
+  } else if (mail && mail.city) {
+    // an LLC's mailing address is often the owner's home or office: search who lives there
+    links.push(['TruePeopleSearch', 'https://www.truepeoplesearch.com/resultaddress?streetaddress=' + encodeURIComponent(mail.street) + '&citystatezip=' + encodeURIComponent(csz(mail))]);
+    links.push(['CyberBackgroundChecks', 'https://www.cyberbackgroundchecks.com/address/' + slug(mail.street) + '/' + slug(mail.city) + '/' + slug(mail.state)]);
+  }
+  if (isCo) {
+    const nc = /, NC\b/.test(i.mailingAddress || '') || /elizabeth city|camden|currituck|perquimans|chowan/i.test(i.markets || '');
+    links.push([nc ? 'NC company owner' : 'VA company owner', nc ? 'https://www.sosnc.gov/online_services/search/by_title/_Business_Registration' : 'https://cis.scc.virginia.gov/EntitySearch/Index', i.company]);
+  }
+  return '<div class="small" style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px 10px">' +
+    links.map(l => '<a href="' + esc(l[1]) + '" target="_blank" rel="noopener"' + (l[2] ? ' data-act="copyName" data-name="' + esc(l[2]) + '" title="Copies the company name so you can paste it into the search"' : '') + '>' + esc(l[0]) + ' ↗</a>').join('') +
+    '<a href="#" data-act="contactOpen" data-id="' + esc(i.id) + '">+ Add email</a></div>' +
+    (S.contactFor === i.id ? '<div style="display:flex;gap:4px;margin-top:4px"><input id="cEmail" type="email" placeholder="email" style="min-width:150px;padding:5px 8px"><input id="cPhone" type="tel" placeholder="phone" style="width:120px;padding:5px 8px"><button class="btn sm primary" data-act="contactSave" data-id="' + esc(i.id) + '">Save</button></div>' : '');
+}
 async function skipTraceCall(el, ids) {
   const old = el.innerHTML; el.disabled = true; el.innerHTML = '<span class="spinner"></span> Skip tracing…';
   try {
@@ -8463,6 +8523,17 @@ const ACT = {
     el.disabled = true; el.innerHTML = '<span class="spinner"></span> Testing…';
     try { S.intake = await api('saveSkipTraceKey', k); toast('BatchData connected. New buyers will be skip traced automatically.'); render(); }
     catch (e) { fail(e); el.disabled = false; el.textContent = 'Save & test'; }
+  },
+  copyName: el => { try { navigator.clipboard.writeText(el.dataset.name); toast('Company name copied: paste it into the search.'); } catch (e) { /* still opens */ } window.open(el.href, '_blank', 'noopener'); },
+  contactOpen: (el, e) => { if (e) e.preventDefault(); S.contactFor = S.contactFor === el.dataset.id ? null : el.dataset.id; render(); setTimeout(() => { const x = $('#cEmail'); if (x) x.focus(); }, 0); },
+  contactSave: async el => {
+    const email = $('#cEmail').value.trim(), phone = $('#cPhone').value.trim();
+    el.disabled = true;
+    try {
+      const u = await api('setInvestorContact', el.dataset.id, email, phone);
+      S.investors = S.investors.map(x => x.id === u.id ? Object.assign(x, u) : x);
+      S.contactFor = null; toast('Saved.'); render();
+    } catch (e) { fail(e); el.disabled = false; }
   },
   skipTraceAll: async el => skipTraceCall(el, []),
   skipTraceOne: async el => skipTraceCall(el, [el.dataset.id]),

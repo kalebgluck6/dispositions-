@@ -5980,6 +5980,32 @@ function skipTraceNow(ids) {
   });
 }
 
+/** Saves an email / phone found by hand (free people-search lookup). */
+function setInvestorContact(id, email, phone) {
+  requireRole_('Rep');
+  email = lc_(email).replace(/^mailto:/, '');
+  phone = str_(phone);
+  if (email && !isEmail_(email)) throw new Error('That email address doesn\'t look right.');
+  if (!email && !phone) throw new Error('Enter an email or a phone number.');
+  return withLock_(function () {
+    var t = readTable_(SHEET.INVESTORS);
+    var inv = t.rows.filter(function (r) { return r.id === id; })[0];
+    if (!inv) throw new Error('Buyer not found.');
+    if (email) {
+      var dup = t.rows.filter(function (r) { return r.id !== id && lc_(r.email) === email; })[0];
+      if (dup) throw new Error('That email already belongs to ' + investorName_(dup) + ' (' + dup.id + ').');
+    }
+    var f = { updated: new Date(), skipTraced: new Date(), skipTraceResult: 'Looked up by hand' };
+    if (email) f.email = email;
+    if (phone) f.phone = formatPhone_(phone) || phone;
+    if (email) f.notes = str_(inv.notes).replace(/\s*Needs an email address before approval \(skip trace this owner\)\.?/, '').trim();
+    updateObject_(SHEET.INVESTORS, inv._row, f);
+    Object.keys(f).forEach(function (k) { inv[k] = f[k]; });
+    delete inv._row;
+    return toClient_(inv);
+  });
+}
+
 
 // ================= Verification.gs =================
 /**

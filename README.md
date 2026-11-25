@@ -296,7 +296,15 @@ Sales by the same owner are combined into one buyer, and the buy box comes from 
 
 **Credits:** DealMachine charges 1 credit per property and 1 per contact, and never charges twice for the same record in a month. Each run only processes sales it hasn't seen before. You control spend with **Max properties per run** (shared fairly between cash, hard-money and land searches) and **Monthly credit limit**. **Preview matches (free)** shows how many sales match right now without using credits.
 
-### Automatic skip trace (BatchData)
+### Skip tracing: free lookups
+Each buyer waiting for review who has no email shows **TruePeopleSearch** and **CyberBackgroundChecks** links. Each link opens that site in your browser with the search already filled in:
+* **People:** searched by name and city.
+* **LLCs:** searched by mailing address, which is often the owner's home or office.
+* **LLC owner:** a **VA company owner** or **NC company owner** link opens the state's business search and copies the company name, so you can paste it into the search.
+
+Paste what you find into **+ Add email** (email and phone) and click **Save**. These sites don't allow automated searches, so the app never searches them on its own.
+
+### Automatic skip trace (BatchData, optional, paid)
 Buyers from public records usually come without an email. Connect BatchData once, and every buyer missing an email is skip traced automatically after each morning and night run. You don't have to do anything by hand.
 
 1. Create a BatchData account at app.batchdata.com and add funds (pay as you go).

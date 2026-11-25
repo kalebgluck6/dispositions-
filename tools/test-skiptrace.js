@@ -127,6 +127,15 @@ step('monthly match limit and per-run limit are respected', () => {
   assert(!M.isLocked());
 });
 
+step('free lookup: email and phone pasted by hand are saved', () => {
+  const id = inv(/No Address/).id;
+  assert.throws(() => g.setInvestorContact(id, 'not-an-email', ''), /doesn't look right/);
+  assert.throws(() => g.setInvestorContact(id, 'kim@nowhere.com', ''), /already belongs to/);
+  const u = g.setInvestorContact(id, ' Owner@NoAddress.com ', '757-555-0100');
+  assert.strictEqual(u.email, 'owner@noaddress.com'); assert.strictEqual(u.phone, '(757) 555-0100');
+  assert.strictEqual(inv(/No Address/).skipTraceResult, 'Looked up by hand');
+});
+
 step('address parsing', () => {
   assert.strictEqual(JSON.stringify(g.parseAddress_('00103 Pearl St, Elizabeth City, NC 27909-1234')), JSON.stringify({ street: '00103 Pearl St', city: 'Elizabeth City', state: 'NC', zip: '27909' }));
   assert.strictEqual(JSON.stringify(g.parseAddress_('5 Elm St, Isle Of Wight County, VA')), JSON.stringify({ street: '5 Elm St', county: 'Isle Of Wight', state: 'VA' }));
