@@ -312,7 +312,10 @@ function runOwnerWatch() {
     ledgerMinBuysUpdate_();
     ledgerPromote_(ctx);
     flushIntake_(ctx);
-    if (ctx.adds.length) { try { skipTraceRun_(); } catch (e) { /* retried on the next intake run */ } }
+    if (ctx.adds.length) {
+      try { skipTraceRun_(); } catch (e) { /* retried on the next intake run */ }
+      try { webTraceRun_(); } catch (e) { /* retried on the next intake run */ }
+    }
     return { note: note, added: ctx.adds.length };
   });
 }

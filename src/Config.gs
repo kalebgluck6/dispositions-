@@ -71,7 +71,8 @@ var INVESTOR_MAP = {
   tierChanged: 'Tier Changed On',
   lastPurchaseAddress: 'Last Purchase Address',
   skipTraced: 'Skip Traced On',
-  skipTraceResult: 'Skip Trace Result'
+  skipTraceResult: 'Skip Trace Result',
+  webSearched: 'Web Searched On'
 };
 
 var DEAL_MAP = {
@@ -385,6 +386,8 @@ var DEFAULT_SETTINGS = [
   ['SKIPTRACE_ON', 'TRUE', 'Automatically skip trace new buyers who have no email (needs a BatchData API key).'],
   ['SKIPTRACE_MAX_PER_RUN', '100', 'Most buyers skip traced in one run.'],
   ['SKIPTRACE_MONTHLY_CAP', '500', 'Stop skip tracing after this many paid matches in a month (0 = no limit).'],
+  ['SKIPTRACE_WEB_ON', 'TRUE', 'Search the web (Perplexity) for buyers still missing an email after skip tracing (needs a Perplexity API key).'],
+  ['SKIPTRACE_WEB_MONTHLY_CAP', '1000', 'Most Perplexity web searches per month (about $5 per 1,000). 0 = no limit.'],
   ['SKIPTRACE_ACTIVE_TOO', 'TRUE', 'Also skip trace approved (Active) buyers that are missing an email, not just new buyers.'],
   ['INTAKE_WATCH_ON', 'TRUE', 'Find investor buyers in free public records for Hampton Roads, Richmond and Elizabeth City / Camden.'],
   ['INTAKE_WATCH_AREAS', '', 'Which public-records areas to watch (blank = all).'],

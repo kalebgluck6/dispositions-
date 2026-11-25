@@ -66,10 +66,17 @@ function skipTraceCandidates_(ids) {
   var activeToo = bool_(s.SKIPTRACE_ACTIVE_TOO);
   var t = readTable_(SHEET.INVESTORS);
   var want = ids ? ids.reduce(function (m, id) { m[id] = true; return m; }, {}) : null;
+  var fixed = !!PropertiesService.getScriptProperties().getProperty('ST_OWNER_FIX');
   return t.rows.filter(function (r) {
     if (str_(r.email) || bool_(r.optOut)) return false;
     if (want) return !!want[r.id];
-    if (str_(r.skipTraced)) return false;   // each buyer is traced automatically once
+    if (str_(r.skipTraced)) {
+      // each buyer is traced automatically once; "previous owner" results retry every 14 days
+      // (and once after the owner-name fix), since DealMachine catches up on new sales
+      if (!/previous owner/.test(str_(r.skipTraceResult))) return false;
+      var when = asDate_(r.skipTraced);
+      if (fixed && when && Date.now() - when.getTime() < 14 * 86400000) return false;
+    }
     var st = str_(r.status);
     return st === PENDING_REVIEW || (activeToo && st === 'Active');
   }).sort(function (a, b) {
@@ -158,7 +165,7 @@ function dmSkipPick_(contacts, inv, requireName) {
 function sameOwner_(dmOwner, inv) {
   if (!str_(dmOwner)) return true;
   var stop = /^(llc|inc|corp|co|company|the|of|and|lp|llp|ltd|trust|trustee|holdings?|properties|property|group|investments?|homes?|i|ii|iii)$/;
-  var words = function (x) { return normKey_(x).split(/\s+/).filter(function (w) { return w.length > 1 && !stop.test(w); }); };
+  var words = function (x) { return String(x || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(function (w) { return w.length > 1 && !stop.test(w); }); };
   var mine = words(str_(inv.company) || (str_(inv.firstName) + ' ' + str_(inv.lastName)));
   var theirs = words(dmOwner);
   if (!mine.length) return true;
@@ -197,6 +204,7 @@ function skipTraceRun_(ids) {
   var byId = {}, results = {};
   cands.forEach(function (c) { byId[c.id] = c; });
 
+  PropertiesService.getScriptProperties().setProperty('ST_OWNER_FIX', '1');
   var stale = {};
   var passDm = function (list, mailingAsProperty) {
     var items = [];
@@ -288,6 +296,17 @@ function skipTraceRun_(ids) {
   return out;
 }
 
+/** Buyers missing an email that a connected service hasn't tried yet. */
+function skipTraceWaiting_() {
+  var s = getSettings_(), activeToo = bool_(s.SKIPTRACE_ACTIVE_TOO), prov = !!skipProvider_(), px = !!pxKey_();
+  return readTable_(SHEET.INVESTORS).rows.filter(function (r) {
+    if (str_(r.email) || bool_(r.optOut)) return false;
+    var st = str_(r.status);
+    if (!(st === PENDING_REVIEW || (activeToo && st === 'Active'))) return false;
+    return (prov && !str_(r.skipTraced)) || (px && !str_(r.webSearched));
+  }).length;
+}
+
 function skipTraceStatus_() {
   var s = getSettings_();
   var last = {};
@@ -296,7 +315,8 @@ function skipTraceStatus_() {
   return {
     hasKey: !!skipProvider_(), provider: skipProvider_(), bdKey: !!key, keyHint: key ? '…' + key.slice(-4) : '', on: bool_(s.SKIPTRACE_ON),
     matchesThisMonth: bdMatchesUsed_(), cap: parseInt(s.SKIPTRACE_MONTHLY_CAP, 10) || 0,
-    waiting: skipTraceCandidates_().length, last: last
+    waiting: skipTraceWaiting_(), last: last,
+    web: { hasKey: !!pxKey_(), keyHint: pxKey_() ? '…' + pxKey_().slice(-4) : '', on: bool_(s.SKIPTRACE_WEB_ON), used: pxUsed_(), cap: parseInt(s.SKIPTRACE_WEB_MONTHLY_CAP, 10) || 0 }
   };
 }
 
@@ -321,9 +341,16 @@ function saveSkipTraceKey(key) {
 function skipTraceNow(ids) {
   requireRole_('Rep');
   return withLock_(function () {
-    var r = skipTraceRun_(ids && ids.length ? ids : null);
-    if (r.status === 'off' && !skipProvider_()) throw new Error(r.note);
-    if (r.status === 'capped') throw new Error(r.note);
+    var list = ids && ids.length ? ids : null;
+    if (!skipProvider_() && !pxKey_()) throw new Error('Connect DealMachine, BatchData or Perplexity first (Skip Trace card).');
+    var r = skipProvider_() ? skipTraceRun_(list) : { status: 'off', traced: 0, emails: 0, phones: 0, note: '' };
+    if (r.status === 'capped' && !pxKey_()) throw new Error(r.note);
+    var w = { status: 'off', searched: 0, emails: 0, note: '' };
+    if (pxKey_()) w = webTraceRun_(list);
+    if (r.status === 'capped' && w.status === 'capped') throw new Error(r.note + ' ' + w.note);
+    r.webEmails = w.emails || 0;
+    r.emails = (r.emails || 0) + r.webEmails;
+    r.note = [r.note, w.note].filter(String).join(' · ');
     return { result: r, status: getIntakeStatus() };
   });
 }

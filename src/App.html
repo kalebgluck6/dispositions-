@@ -853,7 +853,7 @@ VIEWS.intake = {
         pending.map(i => '<tr><td><input type="checkbox" data-change="intakeSel" value="' + esc(i.id) + '"' + (sel.has(i.id) ? ' checked' : '') + '></td>' +
           '<td class="nowrap"><div style="font-weight:600">' + esc((i.firstName + ' ' + i.lastName).trim() || i.company) + '</div><div class="small muted">' + esc(i.firstName || i.lastName ? i.company : '') + '</div><span class="tag">' + esc(i.source) + '</span> <span class="small muted">' + ago(i.dateAdded) + '</span></td>' +
           '<td class="nowrap">' + (i.email ? esc(i.email) : '<span style="color:var(--amber)">⚠ Needs email</span>' + (i.skipTraceResult ? '<div class="small muted">Skip trace: ' + esc(i.skipTraceResult) + '</div>' : '') + lookupLinks(i) +
-            ((st.skipTrace || {}).hasKey ? '<div><button class="btn sm ghost" style="padding:2px 8px;margin-top:3px" data-act="skipTraceOne" data-id="' + esc(i.id) + '">Auto skip trace</button></div>' : '')) + '<div class="small muted">' + esc(i.phone) + '</div>' + (i.mailingAddress ? '<div class="small muted">' + esc(i.mailingAddress) + '</div>' : '') + '</td>' +
+            ((st.skipTrace || {}).hasKey || ((st.skipTrace || {}).web || {}).hasKey ? '<div><button class="btn sm ghost" style="padding:2px 8px;margin-top:3px" data-act="skipTraceOne" data-id="' + esc(i.id) + '">Auto skip trace</button></div>' : '')) + '<div class="small muted">' + esc(i.phone) + '</div>' + (i.mailingAddress ? '<div class="small muted">' + esc(i.mailingAddress) + '</div>' : '') + '</td>' +
           '<td class="small">' + (i.markets ? '<div>' + esc(i.markets) + '</div>' : '') + ((isNum(i.minPrice) && i.minPrice !== '') || (isNum(i.maxPrice) && i.maxPrice !== '') ? '<div>' + short$(i.minPrice || 0) + ' – ' + (i.maxPrice !== '' ? short$(i.maxPrice) : 'any') + '</div>' : '') +
           '<div class="muted">' + esc(list(i.propertyTypes).join(', ')) + '</div><div>' + list(i.categories).map(c => '<span class="tag">' + esc(c) + '</span>').join('') + '</div></td>' +
           '<td class="small" style="max-width:340px;color:var(--text-2)">' + esc(i.purchases || i.criteria || i.notes || '').slice(0, 260) + '</td>' +
@@ -886,9 +886,16 @@ VIEWS.intake = {
           : '<div class="small muted"><b style="color:var(--text)">Automatic:</b> connect DealMachine (DealMachine card below) to skip trace every new buyer automatically, or a BatchData token here. Without either, nothing is charged.</div>') +
         (sk.provider === 'dealmachine' ? '' : '<div class="field"><label>BatchData API token ' + (sk.bdKey ? '<span style="color:var(--accent-2)">· connected (' + esc(sk.keyHint) + ')</span>' : '') + '</label><div class="row" style="flex-wrap:nowrap"><input type="password" id="bdKey" autocomplete="off" placeholder="' + (sk.hasKey ? 'Paste a new token to replace it' : 'Paste your API token') + '"><button class="btn sm primary" data-act="bdSaveKey">Save & test</button></div>' +
           '<div class="hint">At <a href="https://app.batchdata.com" target="_blank">app.batchdata.com</a> → Settings → API Tokens → create a token with Skip Trace access and copy it here. It\'s stored privately in your Google script, never in the spreadsheet.</div></div>') +
+        (() => { const w = sk.web || {}, lw = (st.lastResult || {}).websearch; return '<div style="border:1px solid var(--line);border-radius:10px;padding:12px 14px"><div style="font-weight:600;margin-bottom:4px">Web search for emails (Perplexity) ' + (w.hasKey ? '<span style="color:var(--accent-2);font-weight:400">· connected (' + esc(w.keyHint) + ')</span>' : '') + '</div>' +
+          '<div class="small muted">For buyers still missing an email after skip tracing, the app searches the web for the company or investor: their website, business listings and investor profiles. An email is only used when it\'s printed on a real page that also names the buyer, and the page link is saved in the buyer\'s notes so you can check it before approving. About $0.005 per buyer ($5 per 1,000), paid from Perplexity API credits, which are separate from a Perplexity Pro subscription.</div>' +
+          '<div class="row" style="flex-wrap:nowrap;margin-top:8px"><input type="password" id="pxKey" autocomplete="off" placeholder="' + (w.hasKey ? 'Paste a new key to replace it' : 'pplx-…') + '"><button class="btn sm primary" data-act="pxSaveKey">Save & test</button></div>' +
+          '<div class="hint">At <a href="https://console.perplexity.ai" target="_blank">console.perplexity.ai</a> → add API credits under Billing → API Keys → create a key and paste it here. Stored privately in your Google script.</div>' +
+          '<div class="grid g3" style="margin-top:6px">' + yn('SKIPTRACE_WEB_ON', 'Search automatically after each run') + cfg('SKIPTRACE_WEB_MONTHLY_CAP', 'Monthly search limit (0 = none)', 'number') +
+          '<div class="field"><label>Searches this month</label><div style="padding:9px 0;font-size:15px">' + (w.used || 0) + (w.cap ? ' <span class="muted">of ' + w.cap + '</span>' : '') + '</div></div></div>' +
+          (lw && lw.status === 'error' ? '<div class="small" style="color:#FF9A95">Last web search error: ' + esc(lw.note) + '</div>' : lw && lw.note ? '<div class="small muted">Last run: ' + esc(lw.note) + '</div>' : '') + '</div>'; })() +
         '<div class="grid g4">' + cfg('SKIPTRACE_MAX_PER_RUN', 'Max buyers per run', 'number') + cfg('SKIPTRACE_MONTHLY_CAP', 'Monthly match limit (0 = none)', 'number') + yn('SKIPTRACE_ACTIVE_TOO', 'Also approved buyers missing an email') +
           '<div class="field"><label>Matches this month</label><div style="padding:9px 0;font-size:15px">' + (sk.matchesThisMonth || 0) + (sk.cap ? ' <span class="muted">of ' + sk.cap + '</span>' : '') + '</div></div></div>' +
-        '<div class="row"><button class="btn sm primary" data-act="intakeSave" data-src="skiptrace">Save</button><button class="btn sm" data-act="skipTraceAll"' + (sk.hasKey && sk.waiting ? '' : ' disabled') + '>Skip trace ' + (sk.waiting || 0) + ' buyer' + (sk.waiting === 1 ? '' : 's') + ' missing an email now</button></div>' +
+        '<div class="row"><button class="btn sm primary" data-act="intakeSave" data-src="skiptrace">Save</button><button class="btn sm" data-act="skipTraceAll"' + ((sk.hasKey || (sk.web || {}).hasKey) && sk.waiting ? '' : ' disabled') + '>Skip trace ' + (sk.waiting || 0) + ' buyer' + (sk.waiting === 1 ? '' : 's') + ' missing an email now</button></div>' +
         (lr && lr.status === 'error' ? '<div class="small" style="color:#FF9A95">Last run error: ' + esc(lr.note) + '</div>' : sk.last && sk.last.note ? '<div class="small muted">Last skip trace (' + esc(ago(sk.last.at)) + '): ' + esc(sk.last.note) + '</div>' : '') +
         '</div></div>';
     }
@@ -1562,6 +1569,13 @@ const ACT = {
     const done = () => toast('Signup link copied.');
     if (navigator.clipboard) navigator.clipboard.writeText(i.value).then(done).catch(() => { try { document.execCommand('copy'); done(); } catch (e) { toast('Select the link and copy it.', 'warn'); } });
     else { try { document.execCommand('copy'); done(); } catch (e) { toast('Select the link and copy it.', 'warn'); } }
+  },
+  pxSaveKey: async el => {
+    const k = $('#pxKey').value.trim();
+    if (!k) return toast('Paste your Perplexity API key first.', 'warn');
+    el.disabled = true; el.innerHTML = '<span class="spinner"></span> Testing…';
+    try { S.intake = await api('savePerplexityKey', k); toast('Perplexity connected. Buyers still missing an email will be searched on the web.'); render(); }
+    catch (e) { fail(e); el.disabled = false; el.textContent = 'Save & test'; }
   },
   bdSaveKey: async el => {
     const k = $('#bdKey').value.trim();

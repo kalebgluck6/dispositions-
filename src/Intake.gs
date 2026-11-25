@@ -540,6 +540,7 @@ function runIntakeSources_(sources, sendSummary) {
   }
   flushIntake_(ctx);
   try { results.skiptrace = skipTraceRun_(); } catch (e) { results.skiptrace = { status: 'error', note: String(e.message || e) }; }
+  try { results.websearch = webTraceRun_(); } catch (e) { results.websearch = { status: 'error', note: String(e.message || e) }; }
   var added = ctx.adds.length + (ctx.reopened || 0);
   var stamp = new Date().toISOString();
   setSetting_('LAST_INTAKE_RUN', stamp);

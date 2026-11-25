@@ -184,6 +184,59 @@ step('DealMachine connected: buyers missing an email are skip traced with Enrich
   M.fetchHandler = keep;
 });
 
+step('Perplexity web search: only emails printed on a real page that names the buyer', () => {
+  g.PropertiesService.getScriptProperties().deleteProperty('DM_API_KEY');
+  const keep = M.fetchHandler, pxCalls = [];
+  const PX = 'pplx-' + 'k'.repeat(40);
+  const far = ' lorem ipsum'.repeat(40);
+  const pages = {
+    'Cash Cow Properties LLC': [{ url: 'https://www.cashcowva.com/contact', title: 'Contact | Cash Cow Properties LLC', snippet: 'We buy houses in Norfolk. Reach the team: deals@cashcowva.com or (757) 555-0199.' }],
+    'Naqua Capital LLC': [{ url: 'https://www.zillow.com/profile/x', title: 'Naqua Capital LLC listings', snippet: 'Naqua Capital LLC sold 2 homes. Questions? info@zillow.com' + far + ' random person: john.random@gmail.com' }],
+    'Ursula Investments LLC': [{ url: 'https://someblog.com/post', title: 'Top Norfolk flippers', snippet: 'Great flipper, email bob@flipsrus.com' }],
+    'Marco Diaz': [{ url: 'https://biggerpockets.example/u/marco', title: 'Marco Diaz — Investor', snippet: 'Marco Diaz is a real estate investor in Norfolk VA. Contact Marco at marco@diazbuys.com for off-market deals.' }]
+  };
+  M.fetchHandler = (url, opts) => {
+    if (url === 'https://api.perplexity.ai/search') {
+      if (opts.headers.Authorization !== 'Bearer ' + PX) return { code: 401, body: { error: { message: 'Invalid API key', type: 'invalid_api_key', code: 401 } } };
+      const b = JSON.parse(opts.payload);
+      if (!b.query.length) return { code: 400, body: { error: { message: 'empty query array', type: 'invalid_request', code: 400 } } };
+      pxCalls.push(b);
+      const who = Object.keys(pages).find(k => b.query[0].includes('"' + k + '"'));
+      return { code: 200, body: { id: 'r1', results: who ? pages[who] : [] } };
+    }
+    return keep(url, opts);
+  };
+  assert.throws(() => g.savePerplexityKey('pplx-' + 'x'.repeat(40)), /rejected the API key/);
+  g.savePerplexityKey(PX);
+  assert.strictEqual(pxCalls.length, 0, 'key test is free (rejected empty request)');
+  add({ company: 'Cash Cow Properties LLC', mailingAddress: '5 Bay St, Norfolk, VA 23510', purchaseCount: 2 });
+  add({ company: 'Naqua Capital LLC', mailingAddress: '6 Bay St, Norfolk, VA 23510', purchaseCount: 2 });
+  add({ company: 'Ursula Investments LLC', mailingAddress: '7 Bay St, Norfolk, VA 23510', purchaseCount: 2 });
+  add({ firstName: 'Marco', lastName: 'Diaz', mailingAddress: '8 Bay St, Norfolk, VA 23510', purchaseCount: 2 });
+  const r = g.runBuyerIntake().results.websearch;
+  assert.strictEqual(r.status, 'ok', JSON.stringify(r));
+  const cc = pxCalls.find(c => /Cash Cow/.test(c.query[0]));
+  assert(cc && cc.query.length <= 3 && /^"Cash Cow Properties LLC" Norfolk VA email$/.test(cc.query[0]), JSON.stringify(cc));
+  assert(pxCalls.every(c => c.query.length <= 3), 'one request per buyer, up to 3 queries');
+  assert.strictEqual(inv(/Cash Cow/).email, 'deals@cashcowva.com', 'email on the company\'s own website');
+  assert(/cashcowva\.com\/contact/.test(inv(/Cash Cow/).notes), 'source page saved in notes');
+  assert.strictEqual(inv(/Naqua/).email, '', 'listing-site email and far-away emails rejected');
+  assert.strictEqual(inv(/Ursula/).email, '', 'page that never names the buyer is ignored');
+  assert.strictEqual(inv(/Diaz/).email, 'marco@diazbuys.com', 'email right next to the person\'s name');
+  assert(/no email on the web/.test(inv(/Naqua/).skipTraceResult), inv(/Naqua/).skipTraceResult);
+  const used = g.pxUsed_();
+  assert(used >= 4);
+  g.runBuyerIntake();
+  assert.strictEqual(g.pxUsed_(), used, 'each buyer searched automatically once');
+  const st = g.getIntakeStatus().skipTrace.web;
+  assert(st.hasKey && st.used === used);
+  g.saveSettings({ SKIPTRACE_WEB_MONTHLY_CAP: String(used) });
+  assert.strictEqual(g.runBuyerIntake().results.websearch.status, 'capped');
+  g.saveSettings({ SKIPTRACE_WEB_MONTHLY_CAP: '1000' });
+  M.fetchHandler = keep;
+  assert(!M.isLocked());
+});
+
 step('address parsing', () => {
   assert.strictEqual(JSON.stringify(g.parseAddress_('00103 Pearl St, Elizabeth City, NC 27909-1234')), JSON.stringify({ street: '00103 Pearl St', city: 'Elizabeth City', state: 'NC', zip: '27909' }));
   assert.strictEqual(JSON.stringify(g.parseAddress_('5 Elm St, Isle Of Wight County, VA')), JSON.stringify({ street: '5 Elm St', county: 'Isle Of Wight', state: 'VA' }));

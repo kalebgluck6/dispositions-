@@ -308,6 +308,20 @@ Each buyer waiting for review who has no email shows **TruePeopleSearch** and **
 
 Paste what you find into **+ Add email** (email and phone) and click **Save**. These sites don't allow automated searches, so the app never searches them on its own.
 
+### Web search for emails (Perplexity)
+For buyers still missing an email after skip tracing, the app can search the web for the company or investor, including their website, business listings and investor profiles. It uses Perplexity's Search API, which returns real pages rather than an AI-written answer, so nothing is guessed:
+* **Email must be on the page:** an email is used only when it's printed on a page that also names the buyer.
+* **Email must be tied to the buyer:** it must sit near the buyer's name, use a domain built from the company name, or belong to the page's own website.
+* **Never used:** emails from listing and people-search sites, and generic addresses like noreply@ or support@.
+* **Source saved:** the page link goes in the buyer's notes so you can check it before approving.
+
+**Cost:** about $0.005 per buyer ($5 per 1,000 searches), paid from Perplexity API credits. These are separate from a Perplexity Pro subscription. Set a monthly search limit on the card.
+
+**Setup:**
+1. At console.perplexity.ai, add credits under Billing.
+2. Create an API key.
+3. Paste it into **New Buyers → Skip Trace → Web search for emails** and click **Save & test**.
+
 ### Automatic skip trace with DealMachine
 If DealMachine is connected, it skip traces automatically. After every run, each buyer missing an email is looked up by the property they bought (DealMachine **Enrich by Address**). The owner's email, phone and name are filled in.
 * **Cost:** 1 DealMachine people credit per contact found. Your DealMachine monthly credit limit still applies.

@@ -150,6 +150,10 @@ const seed = `
     if (url.indexOf('api.v2.dealmachine.com') === -1) return { code: 404, body: '{}' };
     if (url.endsWith('/account')) return { code: 200, body: { data: {} } };
     if (url.indexOf('/filters?') > -1) return { code: 200, body: { data: [{ filter_id: 'property_type', options: [{ option_id: 1, label: 'Single Family' }, { option_id: 9, label: 'Vacant Land' }] }, { filter_id: 'additional_property_types', options: [{ option_id: 101, label: 'Residential Vacant Land' }] }], pagination: {} } };
+    if (url.endsWith('/enrichment/address')) {
+      const b = JSON.parse(o.payload);
+      return { code: 200, body: { data: b.data.map((it, i) => i % 3 === 2 ? { input: it, matched: false } : { input: it, matched: true, owner_1_full_name: '', contacts: [{ first_name: 'Alex', last_name: 'Morgan', full_name: 'Alex Morgan', is_likely_owner: true, emails: [{ address: 'alex.morgan' + i + '@investormail.com', verification_status: 'very_likely_deliverable' }], phones: [{ number: '757555' + String(1000 + i), type: 'wireless', do_not_call: false }] }] }), credits: { used: b.data.length } } };
+    }
     const b = JSON.parse(o.payload), has = (id) => b.filters.some(x => x.filter_id === id);
     const k = has('additional_property_types') ? 'land' : has('is_mortgage_1_private_lender') ? 'hard' : 'cash';
     if (url.endsWith('/count')) return { code: 200, body: { total_properties: { cash: 9, hard: 3, land: 2 }[k] * b.locations.length } };
